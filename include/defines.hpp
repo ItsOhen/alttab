@@ -13,6 +13,7 @@ inline long FONTSIZE;
 inline long BORDERSIZE;
 inline long BORDERROUNDING;
 inline float BORDERROUNDINGPOWER;
+inline int SPACING;
 inline CGradientValueData *ACTIVEBORDERCOLOR;
 inline CGradientValueData *INACTIVEBORDERCOLOR;
 inline auto BLURENABLED = CConfigValue<Hyprlang::INT>("decoration:blur:enabled");

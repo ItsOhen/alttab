@@ -98,7 +98,7 @@ public:
     const Vector2D screenCenter = MONITOR->m_position + (MONITOR->m_size / 2.0);
     const double activeHeight = MONITOR->m_size.y * 0.4;
     const double inactiveHeight = MONITOR->m_size.y * 0.3;
-    const double spacing = 10.0;
+    const double spacing = BORDERSIZE + SPACING;
     for (size_t i = 0; i < activeList.size(); ++i) {
       Vector2D winSize = activeList[i]->window->m_realSize->goal();
       auto aspect = winSize.x / std::max(winSize.y, 1.0);
@@ -348,6 +348,7 @@ static void onConfigReload() {
   BORDERROUNDINGPOWER = std::any_cast<Hyprlang::FLOAT>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:border_rounding_power")->getValue());
   ACTIVEBORDERCOLOR = rc<CGradientValueData *>(std::any_cast<void *>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:border_active")->getValue()));
   INACTIVEBORDERCOLOR = rc<CGradientValueData *>(std::any_cast<void *>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:border_inactive")->getValue()));
+  SPACING = std::any_cast<Hyprlang::INT>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:spacing")->getValue());
   g_pCarouselManager->rebuildAll();
 }
 
@@ -370,6 +371,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:border_rounding_power", Hyprlang::FLOAT{2});
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:border_active", Hyprlang::CConfigCustomValueType{&configHandleGradientSet, &configHandleGradientDestroy, "0xff00ccdd"});
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:border_inactive", Hyprlang::CConfigCustomValueType{&configHandleGradientSet, &configHandleGradientDestroy, "0xaabbccddff"});
+  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:spacing", Hyprlang::INT{10});
 
   HyprlandAPI::reloadConfig();
   onConfigReload();
