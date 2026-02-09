@@ -137,7 +137,6 @@ public:
       refreshLayout();
     }
 
-    bool animating = false;
     for (size_t i = 0; i < windows.size(); ++i) {
       auto &el = windows[i];
 
@@ -150,7 +149,6 @@ public:
         el->pos = el->pos + posDiff * ANIMATIONSPEED;
         el->size = el->size + sizeDiff * ANIMATIONSPEED;
         el->onResize();
-        animating = true;
       } else {
         el->pos = el->targetPos;
         el->size = el->targetSize;
@@ -159,9 +157,8 @@ public:
 
       el->update();
     }
-
-    if (animating)
-      g_pHyprRenderer->damageMonitor(MONITOR);
+    // Always damage on pre-render
+    g_pHyprRenderer->damageMonitor(MONITOR);
   }
 
   std::vector<Element *> getRenderList() {
