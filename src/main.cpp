@@ -7,6 +7,7 @@
 #include <src/config/ConfigDataValues.hpp>
 #include <src/desktop/state/FocusState.hpp>
 #include <src/devices/IKeyboard.hpp>
+#include <src/managers/PointerManager.hpp>
 #include <src/managers/input/InputManager.hpp>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
@@ -17,7 +18,8 @@ APICALL EXPORT std::string PLUGIN_API_VERSION() {
 class CarouselManager {
 public:
   bool active = false;
-  int activeIndex = 0;
+  size_t activeIndex = 0;
+  std::chrono::time_point<std::chrono::steady_clock> lastframe = std::chrono::steady_clock::now();
   std::vector<UP<WindowContainer>> windows;
 
   PHLMONITOR lastMonitor = nullptr;
@@ -34,11 +36,8 @@ public:
       return;
     active = true;
     lastMonitor = MONITOR;
-    refreshLayout();
-    for (auto &el : windows) {
-      el->pos = el->targetPos;
-      el->size = el->targetSize;
-    }
+    lastframe = std::chrono::steady_clock::now();
+    refreshLayout(true);
   }
 
   void deactivate() {
@@ -49,18 +48,18 @@ public:
       g_pHyprRenderer->damageMonitor(MONITOR);
   }
 
-  void next() {
+  void next(bool snap = false) {
     if (windows.empty())
       return;
     activeIndex = (activeIndex + 1) % windows.size();
-    refreshLayout();
+    refreshLayout(snap);
   }
 
-  void prev() {
+  void prev(bool snap = false) {
     if (windows.empty())
       return;
     activeIndex = (activeIndex - 1 + windows.size()) % windows.size();
-    refreshLayout();
+    refreshLayout(snap);
   }
 
   void confirm() {
@@ -79,51 +78,69 @@ public:
     }
   }
 
-  void refreshLayout() {
-    Log::logger->log(Log::TRACE, "[{}] refreshLayout entry, active: {}, windows.size(): {}", PLUGIN_NAME, active, windows.size());
+  void refreshLayout(bool snap = false) {
     if (!MONITOR || windows.empty())
       return;
 
-    std::vector<WindowContainer *> activeList;
-    for (auto &w : windows) {
-      if (!w->shouldBeRemoved())
-        activeList.push_back(w.get());
-    }
+    auto activeList = windows | std::views::transform([](auto &w) { return w.get(); }) | std::views::filter([](auto *w) { return !w->shouldBeRemoved(); }) | std::ranges::to<std::vector<WindowContainer *>>();
 
     if (activeList.empty())
       return;
 
-    if (activeIndex >= activeList.size())
-      activeIndex = std::max((size_t)0, activeList.size() - 1);
-    const Vector2D screenCenter = MONITOR->m_position + (MONITOR->m_size / 2.0);
-    const double activeHeight = MONITOR->m_size.y * 0.4;
-    const double inactiveHeight = MONITOR->m_size.y * 0.3;
-    const double spacing = BORDERSIZE + SPACING;
+    activeIndex = std::clamp(activeIndex, (size_t)0, activeList.size() - 1);
+
+    const auto msize = (MONITOR->m_size * MONITOR->m_scale).round();
+    const auto center = MONITOR->m_position + (msize / 2.0);
+    const auto spacing = BORDERSIZE + SPACING;
+
     for (size_t i = 0; i < activeList.size(); ++i) {
-      Vector2D winSize = activeList[i]->window->m_realSize->goal();
-      auto aspect = winSize.x / std::max(winSize.y, 1.0);
-      aspect = std::clamp(aspect, 0.5, 2.0);
-      auto targetH = (i == (size_t)activeIndex) ? activeHeight : inactiveHeight;
-      activeList[i]->targetSize = Vector2D(targetH * aspect, targetH);
+      auto winSize = activeList[i]->window->m_realSize->goal();
+      auto aspect = std::clamp(winSize.x / std::max(winSize.y, 1.0), 0.5, 2.0);
+      auto targetH = (i == activeIndex) ? msize.y * 0.4 : msize.y * 0.3;
+      activeList[i]->animSize.set(Vector2D(targetH * aspect, targetH), snap);
     }
 
     auto activeWin = activeList[activeIndex];
-    activeWin->targetPos = screenCenter - (activeWin->targetSize / 2.0);
+    auto activePos = center - (activeWin->animSize.target / 2.0);
+    activeWin->animPos.set(activePos, snap);
 
-    for (int i = activeIndex - 1; i >= 0; --i) {
-      activeList[i]->targetPos.x = activeList[i + 1]->targetPos.x - activeList[i]->targetSize.x - spacing;
-      activeList[i]->targetPos.y = screenCenter.y - (activeList[i]->targetSize.y / 2.0);
+    auto leftX = activeWin->animPos.target.x;
+    for (auto *w : activeList | std::views::take(activeIndex) | std::views::reverse) {
+      Vector2D p = {leftX - w->animSize.target.x - spacing, center.y - (w->animSize.target.y / 2.0)};
+      w->animPos.set(p, snap);
+      leftX = p.x;
     }
 
-    for (size_t i = activeIndex + 1; i < activeList.size(); ++i) {
-      activeList[i]->targetPos.x = activeList[i - 1]->targetPos.x + activeList[i - 1]->targetSize.x + spacing;
-      activeList[i]->targetPos.y = screenCenter.y - (activeList[i]->targetSize.y / 2.0);
+    auto rightX = activeWin->animPos.target.x + activeWin->animSize.target.x;
+    for (auto *w : activeList | std::views::drop(activeIndex + 1)) {
+      Vector2D p = {rightX + spacing, center.y - (w->animSize.target.y / 2.0)};
+      w->animPos.set(p, snap);
+      rightX = p.x + w->animSize.target.x;
+    }
+
+    for (auto *w : activeList) {
+      auto isActive = w == activeWin;
+      w->alpha.set(isActive ? 1.0 : UNFOCUSEDALPHA, snap);
+      w->border->isActive = isActive;
     }
   }
 
-  void onPreRender() {
-    if (!active || windows.empty() || !MONITOR)
+  bool isElementOnScreen(WindowContainer *w) {
+    if (!MONITOR)
+      return false;
+
+    auto mBox = CBox{MONITOR->m_position, MONITOR->m_size}.scale(MONITOR->m_scale);
+    auto wBox = CBox{w->pos, w->size};
+    return mBox.intersection(wBox).width > 0;
+  }
+
+  void update() {
+    if (!active || windows.empty())
       return;
+
+    auto now = std::chrono::steady_clock::now();
+    double delta = std::chrono::duration_cast<std::chrono::microseconds>(now - lastframe).count() / 1000000.0;
+    lastframe = now;
 
     auto preSize = windows.size();
     std::erase_if(windows, [](auto &el) { return el->shouldBeRemoved(); });
@@ -133,43 +150,67 @@ public:
         return;
       }
       if (activeIndex >= windows.size())
-        activeIndex = std::max((size_t)0, windows.size() - 1);
-      refreshLayout();
+        prev(true);
     }
 
-    for (size_t i = 0; i < windows.size(); ++i) {
-      auto &el = windows[i];
+    std::vector<WindowContainer *> needsUpdate;
 
-      el->border->isActive = (i == (size_t)activeIndex);
+    for (auto &w : windows) {
+      w->update(delta);
 
-      Vector2D posDiff = el->targetPos - el->pos;
-      Vector2D sizeDiff = el->targetSize - el->size;
+      auto age = now - w->snapshot->lastUpdated;
+      bool onScreen = isElementOnScreen(w.get());
+      bool isActive = (w == windows[activeIndex]);
 
-      if (posDiff.size() > 0.1 || sizeDiff.size() > 0.1) {
-        el->pos = el->pos + posDiff * ANIMATIONSPEED;
-        el->size = el->size + sizeDiff * ANIMATIONSPEED;
-        el->onResize();
+      std::chrono::milliseconds threshold;
+      if (isActive) {
+        // 30fps
+        threshold = std::chrono::milliseconds(30);
+      } else if (onScreen) {
+        // 5fps
+        threshold = std::chrono::milliseconds(200);
       } else {
-        el->pos = el->targetPos;
-        el->size = el->targetSize;
-        el->onResize();
+        // 1fps
+        threshold = std::chrono::milliseconds(1000);
       }
 
-      el->update();
+      if (!w->snapshot->ready || age > threshold) {
+        needsUpdate.push_back(w.get());
+      }
     }
-    // Always damage on pre-render
-    g_pHyprRenderer->damageMonitor(MONITOR);
+
+    std::sort(needsUpdate.begin(), needsUpdate.end(), [this](auto *a, auto *b) {
+      bool aOn = isElementOnScreen(a);
+      bool bOn = isElementOnScreen(b);
+
+      if (aOn != bOn)
+        return aOn;
+
+      if (a == windows[activeIndex].get())
+        return true;
+      if (b == windows[activeIndex].get())
+        return false;
+
+      return a->snapshot->lastUpdated < b->snapshot->lastUpdated;
+    });
+
+    int processed = 0;
+    const int FRAME_BUDGET = 3;
+
+    for (auto *w : needsUpdate) {
+      if (processed >= FRAME_BUDGET)
+        break;
+      w->snapshot->snapshot();
+      processed++;
+    }
   }
 
   std::vector<Element *> getRenderList() {
     auto view = std::views::iota(0, (int)windows.size()) | std::views::transform([&](int i) {
-                  return std::pair<int, Element *>{std::abs(i - activeIndex), windows[i].get()};
+                  return std::pair<int, Element *>{std::abs(i - (int)activeIndex), windows[i].get()};
                 });
-
     std::vector<std::pair<int, Element *>> indexed(view.begin(), view.end());
-
     std::ranges::sort(indexed, std::greater<>{}, [](const auto &p) { return p.first; });
-
     auto result = indexed | std::views::values;
     return {result.begin(), result.end()};
   }
@@ -177,20 +218,22 @@ public:
 
 inline static UP<CarouselManager> g_pCarouselManager = makeUnique<CarouselManager>();
 
-static void onPreRender() {
-  if (g_pCarouselManager->active) {
-    g_pCarouselManager->onPreRender();
-  }
-}
-
 static void onRender(eRenderStage stage) {
   if (!g_pCarouselManager->active)
     return;
+
+  if (stage == eRenderStage::RENDER_PRE) {
+    g_pHyprRenderer->setCursorHidden(true);
+    g_pCarouselManager->update();
+  }
 
   if (stage == eRenderStage::RENDER_LAST_MOMENT) {
     g_pHyprRenderer->m_renderPass.add(makeUnique<BlurPass>());
     g_pHyprRenderer->m_renderPass.add(makeUnique<RenderPass>(g_pCarouselManager->getRenderList()));
   }
+
+  g_pHyprRenderer->damageMonitor(MONITOR);
+  // g_pCompositor->scheduleFrameForMonitor(MONITOR);
 }
 
 static void onWindowCreated(PHLWINDOW w) {
@@ -231,6 +274,8 @@ static bool onKeyEvent(void *self, std::any event, SP<IKeyboard> pKeyboard) {
   if (!g_pCarouselManager->active && e.state == WL_KEYBOARD_KEY_STATE_PRESSED) {
     if (e.keycode == 15 && (MODS & HL_MODIFIER_ALT)) {
       g_pCarouselManager->activate();
+      g_pCarouselManager->next();
+      return false;
     }
   }
 
@@ -349,6 +394,8 @@ static void onConfigReload() {
   ACTIVEBORDERCOLOR = rc<CGradientValueData *>(std::any_cast<void *>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:border_active")->getValue()));
   INACTIVEBORDERCOLOR = rc<CGradientValueData *>(std::any_cast<void *>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:border_inactive")->getValue()));
   SPACING = std::any_cast<Hyprlang::INT>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:spacing")->getValue());
+  ANIMATIONSPEED = std::any_cast<Hyprlang::FLOAT>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:animation_speed")->getValue());
+  UNFOCUSEDALPHA = std::any_cast<Hyprlang::FLOAT>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:unfocused_alpha")->getValue());
   g_pCarouselManager->rebuildAll();
 }
 
@@ -358,7 +405,6 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     throw std::runtime_error("Version mismatch");
 
   static auto PRENDER = HyprlandAPI::registerCallbackDynamic(handle, "render", [&](void *s, SCallbackInfo &i, std::any p) { onRender(std::any_cast<eRenderStage>(p)); });
-  static auto PPRERENDER = HyprlandAPI::registerCallbackDynamic(handle, "preRender", [&](void *s, SCallbackInfo &i, std::any p) { onPreRender(); });
   static auto PMONITORADD = HyprlandAPI::registerCallbackDynamic(handle, "monitorAdded", [&](void *s, SCallbackInfo &i, std::any p) { onMonitorAdded(); });
   static auto POPENWINDOW = HyprlandAPI::registerCallbackDynamic(handle, "openWindow", [&](void *s, SCallbackInfo &i, std::any p) { onWindowCreated(std::any_cast<PHLWINDOW>(p)); });
   static auto PCLOSEWINDOW = HyprlandAPI::registerCallbackDynamic(handle, "closeWindow", [&](void *s, SCallbackInfo &i, std::any p) { onWindowClosed(std::any_cast<PHLWINDOW>(p)); });
@@ -372,6 +418,8 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:border_active", Hyprlang::CConfigCustomValueType{&configHandleGradientSet, &configHandleGradientDestroy, "0xff00ccdd"});
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:border_inactive", Hyprlang::CConfigCustomValueType{&configHandleGradientSet, &configHandleGradientDestroy, "0xaabbccddff"});
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:spacing", Hyprlang::INT{10});
+  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:animation_speed", Hyprlang::FLOAT{1.0});
+  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:unfocused_alpha", Hyprlang::FLOAT{0.6});
 
   HyprlandAPI::reloadConfig();
   onConfigReload();

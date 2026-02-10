@@ -21,4 +21,5 @@ inline bool DIMENABLED = true;
 inline float DIMAMOUNT = 0.15f;
 inline CHyprColor DIMCOLOR = CHyprColor(0.0f, 0.0f, 0.0f, DIMAMOUNT);
 inline CHyprColor TITLECOLOR = CHyprColor(1.0f, 1.0f, 1.0f, 1.0f);
-inline float ANIMATIONSPEED = 0.1f;
+inline float ANIMATIONSPEED = 1.0f;
+inline float UNFOCUSEDALPHA = 0.6f;
