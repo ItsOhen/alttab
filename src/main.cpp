@@ -32,7 +32,10 @@ public:
 
   void activate() {
     Log::logger->log(Log::TRACE, "[{}] activate, active: {}, windows.size(): {}", PLUGIN_NAME, active, windows.size());
-    if (active || windows.empty())
+    if (active)
+      return;
+    rebuildAll(); // fresh list so windows moved to/from special are correct without config reload
+    if (windows.empty())
       return;
     active = true;
     lastMonitor = MONITOR;
