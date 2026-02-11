@@ -24,7 +24,8 @@ public:
   virtual std::optional<CBox> boundingBox() {
     if (elements.empty())
       return std::nullopt;
-    return CBox(MONITOR->m_position.x, MONITOR->m_position.y, MONITOR->m_size.x, MONITOR->m_size.y);
+    auto box = CBox{MONITOR->m_position, MONITOR->m_size}.scale(MONITOR->m_scale);
+    return box;
   }
 
   virtual CRegion opaqueRegion() { return {}; }
@@ -33,7 +34,7 @@ public:
 class BlurPass : public IPassElement {
 public:
   virtual void draw(const CRegion &damage) {
-    CBox monitorBox = {MONITOR->m_position.x, MONITOR->m_position.y, MONITOR->m_size.x, MONITOR->m_size.y};
+    auto monitorBox = CBox{MONITOR->m_position.x, MONITOR->m_position.y, MONITOR->m_size.x, MONITOR->m_size.y}.scale(MONITOR->m_scale);
     auto renderdata = CHyprOpenGLImpl::SRectRenderData{
         .damage = &damage,
         .blur = (*BLURENABLED ? true : false),
@@ -46,7 +47,8 @@ public:
   virtual const char *passName() { return "TabCarouselBlurElement"; }
 
   virtual std::optional<CBox> boundingBox() {
-    return CBox{MONITOR->m_position.x, MONITOR->m_position.y, MONITOR->m_size.x, MONITOR->m_size.y};
+    auto box = CBox(MONITOR->m_position.x, MONITOR->m_position.y, MONITOR->m_size.x, MONITOR->m_size.y).scale(MONITOR->m_scale);
+    return box;
   }
 
   virtual CRegion opaqueRegion() { return {}; }

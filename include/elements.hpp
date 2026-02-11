@@ -1,9 +1,48 @@
 #pragma once
 
+#include "defines.hpp"
 #include <hyprland/src/defines.hpp>
 #include <hyprland/src/desktop/view/Window.hpp>
 #include <hyprland/src/render/Renderer.hpp>
 #include <src/desktop/state/FocusState.hpp>
+
+template <typename T>
+struct AnimatedValue {
+  T current{};
+  T start{};
+  T target{};
+  float progress = 1.0f;
+
+  AnimatedValue &operator=(const T &val) {
+    set(val, false);
+    return *this;
+  }
+
+  void snap(T val) {
+    set(val, true);
+  }
+
+  void set(T val, bool snap) {
+    if (snap) {
+      current = start = target = val;
+      progress = 1.0f;
+    } else if (val != target) {
+      start = current;
+      target = val;
+      progress = 0.0f;
+    }
+  }
+
+  void tick(float delta, float speed) {
+    if (progress >= 1.0f) {
+      current = target;
+      return;
+    }
+    progress = std::min(1.0f, progress + (delta / speed));
+    float t = progress * (2.0f - progress);
+    current = start + (target - start) * t;
+  }
+};
 
 class Element {
 public:
@@ -11,7 +50,17 @@ public:
   void setParent(Element *parent) {
     this->parent = parent;
   };
-  virtual void update() = 0;
+  virtual void update(const double delta) {
+    tick(delta, ANIMATIONSPEED);
+  };
+  virtual void tick(const double delta, float speed) {
+    animPos.tick(delta, ANIMATIONSPEED);
+    animSize.tick(delta, ANIMATIONSPEED);
+    alpha.tick(delta, ANIMATIONSPEED);
+    scale.tick(delta, ANIMATIONSPEED);
+    this->pos = animPos.current;
+    this->size = animSize.current;
+  }
   virtual void draw(const Vector2D &offset) = 0;
 
   void markForRemoval() {
@@ -22,11 +71,20 @@ public:
     return markedForRemoval;
   };
 
-protected:
+  float alphaAbs() {
+    if (!parent)
+      return alpha.current;
+    return alpha.current * parent->alphaAbs();
+  }
+
   Element *parent = nullptr;
   bool markedForRemoval = false;
   Vector2D pos;
   Vector2D size;
+  AnimatedValue<float> alpha{1.0f, 1.0f, 1.0f, 1.0f};
+  AnimatedValue<float> scale{1.0f, 1.0f, 1.0f, 1.0f};
+  AnimatedValue<Vector2D> animPos;
+  AnimatedValue<Vector2D> animSize;
 };
 
 class Container : public Element {
@@ -42,10 +100,11 @@ public:
     return ptr;
   }
 
-  void update() override {
+  void update(const double delta) override {
+    Element::update(delta);
     cleanup();
     for (auto &el : elements)
-      el->update();
+      el->update(delta);
   }
 
   void draw(const Vector2D &offset) override {
@@ -71,9 +130,12 @@ public:
   PHLWINDOW window;
   CFramebuffer fb;
   double borderSize = 1.0f;
-  void update();
-  void draw(const Vector2D &offset);
-  friend class WindowContainer;
+  bool ready = false;
+  std::chrono::time_point<std::chrono::steady_clock> lastUpdated;
+  AnimatedValue<float> textureAlpha{0.0f, 0.0f, 0.0f, 0.0f};
+  void draw(const Vector2D &offset) override;
+  void update(const double delta) override;
+  void snapshot();
 };
 
 class TextBox : public Element {
@@ -84,9 +146,8 @@ public:
   CHyprColor color;
   SP<CTexture> texture;
   int fontsize;
-  void update();
-  void draw(const Vector2D &offset);
-  friend class WindowContainer;
+  void update(const double delta) override;
+  void draw(const Vector2D &offset) override;
 };
 
 class BorderBox : public Element {
@@ -97,9 +158,8 @@ public:
   float power;
   bool isActive = false;
 
-  void update() override { ; };
+  void update(const double delta) override;
   void draw(const Vector2D &offset) override;
-  friend class WindowContainer;
 };
 
 class WindowContainer : public Container {
@@ -108,13 +168,17 @@ public:
   TextBox *header = nullptr;
   WindowSnapshot *snapshot = nullptr;
   BorderBox *border = nullptr;
-  Vector2D targetSize, targetPos;
+
+  void updateAnimation(float delta) {
+  }
+
+  void setTargetLayout(Vector2D p, Vector2D s, bool snap = false) {
+    animPos.set(p, snap);
+    animSize.set(s, snap);
+  }
 
   WindowContainer(PHLWINDOW window);
 
-  void draw(const Vector2D &offset);
-
-  void onResize();
-
-  friend class CarouselManager;
+  void draw(const Vector2D &offset) override;
+  void update(double delta) override;
 };
