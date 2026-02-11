@@ -16,6 +16,7 @@ inline float BORDERROUNDINGPOWER;
 inline int SPACING;
 inline CGradientValueData *ACTIVEBORDERCOLOR;
 inline CGradientValueData *INACTIVEBORDERCOLOR;
+inline bool INCLUDE_SPECIAL = true;
 inline auto BLURENABLED = CConfigValue<Hyprlang::INT>("decoration:blur:enabled");
 inline bool DIMENABLED = true;
 inline float DIMAMOUNT = 0.15f;
