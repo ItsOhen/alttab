@@ -9,6 +9,7 @@
 #include <src/devices/IKeyboard.hpp>
 #include <src/managers/PointerManager.hpp>
 #include <src/managers/input/InputManager.hpp>
+#include <src/render/Renderer.hpp>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
 APICALL EXPORT std::string PLUGIN_API_VERSION() {
@@ -21,8 +22,6 @@ public:
   size_t activeIndex = 0;
   std::chrono::time_point<std::chrono::steady_clock> lastframe = std::chrono::steady_clock::now();
   std::vector<UP<WindowContainer>> windows;
-
-  PHLMONITOR lastMonitor = nullptr;
 
   void toggle() {
     active = !active;
@@ -38,17 +37,24 @@ public:
     if (windows.empty())
       return;
     active = true;
-    lastMonitor = MONITOR;
+    MONITOR = Desktop::focusState()->monitor();
     lastframe = std::chrono::steady_clock::now();
     refreshLayout(true);
+  }
+
+  void damageMonitors() {
+    for (auto &mon : g_pCompositor->m_monitors) {
+      if (!mon || !mon->m_enabled)
+        continue;
+      g_pHyprRenderer->damageMonitor(mon);
+    }
   }
 
   void deactivate() {
     active = false;
     g_pHyprRenderer->m_renderPass.removeAllOfType("TabCarouselPassElement");
     g_pHyprRenderer->m_renderPass.removeAllOfType("TabCarouselBlurElement");
-    if (MONITOR)
-      g_pHyprRenderer->damageMonitor(MONITOR);
+    damageMonitors();
   }
 
   void next(bool snap = false) {
@@ -99,7 +105,7 @@ public:
     activeIndex = std::clamp(activeIndex, (size_t)0, activeList.size() - 1);
 
     const auto msize = (MONITOR->m_size * MONITOR->m_scale).round();
-    const auto center = MONITOR->m_position + (msize / 2.0);
+    const auto center = (msize / 2.0);
     const auto spacing = BORDERSIZE + SPACING;
 
     for (size_t i = 0; i < activeList.size(); ++i) {
@@ -239,10 +245,10 @@ static void onRender(eRenderStage stage) {
   if (stage == eRenderStage::RENDER_LAST_MOMENT) {
     g_pHyprRenderer->m_renderPass.add(makeUnique<BlurPass>());
     g_pHyprRenderer->m_renderPass.add(makeUnique<RenderPass>(g_pCarouselManager->getRenderList()));
+    g_pHyprRenderer->setCursorHidden(false);
   }
 
-  g_pHyprRenderer->damageMonitor(MONITOR);
-  // g_pCompositor->scheduleFrameForMonitor(MONITOR);
+  g_pCarouselManager->damageMonitors();
 }
 
 static void onWindowCreated(PHLWINDOW w) {
@@ -265,11 +271,6 @@ static void onWindowClosed(PHLWINDOW w) {
 static void onMonitorAdded() {
   ;
   // TODO: Add monitor row
-}
-
-static void onMonitorFocus(PHLMONITOR mon) {
-  if (mon)
-    MONITOR = mon;
 }
 
 static CFunctionHook *keyhookfn = nullptr;
@@ -420,7 +421,6 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
   static auto PMONITORADD = HyprlandAPI::registerCallbackDynamic(handle, "monitorAdded", [&](void *s, SCallbackInfo &i, std::any p) { onMonitorAdded(); });
   static auto POPENWINDOW = HyprlandAPI::registerCallbackDynamic(handle, "openWindow", [&](void *s, SCallbackInfo &i, std::any p) { onWindowCreated(std::any_cast<PHLWINDOW>(p)); });
   static auto PCLOSEWINDOW = HyprlandAPI::registerCallbackDynamic(handle, "closeWindow", [&](void *s, SCallbackInfo &i, std::any p) { onWindowClosed(std::any_cast<PHLWINDOW>(p)); });
-  static auto PMONITORFOCUS = HyprlandAPI::registerCallbackDynamic(handle, "focusedMon", [&](void *s, SCallbackInfo &i, std::any p) { onMonitorFocus(std::any_cast<PHLMONITOR>(p)); });
   static auto PONRELOAD = HyprlandAPI::registerCallbackDynamic(handle, "configReloaded", [&](void *s, SCallbackInfo &i, std::any p) { onConfigReload(); });
 
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:font_size", Hyprlang::INT{24});

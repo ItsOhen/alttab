@@ -5,6 +5,8 @@
 #include <hyprland/src/helpers/Monitor.hpp>
 #include <hyprland/src/render/Renderer.hpp>
 #include <hyprland/src/render/pass/PassElement.hpp>
+#include <src/Compositor.hpp>
+#include <src/render/OpenGL.hpp>
 
 class RenderPass : public IPassElement {
 public:
@@ -12,6 +14,9 @@ public:
   RenderPass(std::vector<Element *> e) : elements(e) {}
 
   virtual void draw(const CRegion &damage) {
+    auto mon = g_pHyprOpenGL->m_renderData.pMonitor.lock();
+    if (!mon || !(mon == MONITOR))
+      return;
     for (auto *el : elements) {
       el->draw({0, 0});
     }
@@ -20,36 +25,25 @@ public:
   virtual bool needsLiveBlur() { return false; }
   virtual bool needsPrecomputeBlur() { return false; }
   virtual const char *passName() { return "TabCarouselPassElement"; }
-
-  virtual std::optional<CBox> boundingBox() {
-    if (elements.empty())
-      return std::nullopt;
-    auto box = CBox{MONITOR->m_position, MONITOR->m_size}.scale(MONITOR->m_scale);
-    return box;
-  }
-
-  virtual CRegion opaqueRegion() { return {}; }
 };
 
 class BlurPass : public IPassElement {
 public:
   virtual void draw(const CRegion &damage) {
-    auto monitorBox = CBox{MONITOR->m_position.x, MONITOR->m_position.y, MONITOR->m_size.x, MONITOR->m_size.y}.scale(MONITOR->m_scale);
+    auto mon = g_pHyprOpenGL->m_renderData.pMonitor.lock();
+    if (!mon)
+      return;
+
+    auto localBox = CBox{{0, 0}, mon->m_size}.scale(mon->m_scale);
     auto renderdata = CHyprOpenGLImpl::SRectRenderData{
         .damage = &damage,
         .blur = (*BLURENABLED ? true : false),
     };
-    g_pHyprOpenGL->renderRect(monitorBox, DIMCOLOR, renderdata);
+
+    g_pHyprOpenGL->renderRect(localBox, DIMCOLOR, renderdata);
   }
 
-  virtual bool needsLiveBlur() { return true; }
-  virtual bool needsPrecomputeBlur() { return true; }
+  virtual bool needsLiveBlur() { return false; }
+  virtual bool needsPrecomputeBlur() { return false; }
   virtual const char *passName() { return "TabCarouselBlurElement"; }
-
-  virtual std::optional<CBox> boundingBox() {
-    auto box = CBox(MONITOR->m_position.x, MONITOR->m_position.y, MONITOR->m_size.x, MONITOR->m_size.y).scale(MONITOR->m_scale);
-    return box;
-  }
-
-  virtual CRegion opaqueRegion() { return {}; }
 };
