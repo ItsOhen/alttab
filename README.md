@@ -9,27 +9,25 @@ Alt-tab style window carousel for Hyprland. Shows live previews of windows; cycl
 - Hyprland (plugin API)
 - CMake 3.27+
 - C++23 compiler
-- `hyprland` pkg-config
 
 ## Build
 
 ```bash
-mkdir build && cd build
-cmake ..
-make
-# or use make release
+git clone https://github.com/ItsOhen/alttab.git
+cd alttab
+make release
 ```
 
-Install (optional):
-
-```bash
-sudo make install
-```
-
-The plugin `.so` will be in `build/` (or in the install prefix). Load it in `hyprland.conf`:
+The plugin `.so` will be in `build/`. Load it in `hyprland.conf`:
 
 ```
 plugin = /path/to/build/alttab.so
+```
+
+or with:
+
+```
+hyprctl plugin load /path/to/build/alttab.so
 ```
 
 ## Keybinds
