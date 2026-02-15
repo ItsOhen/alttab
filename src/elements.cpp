@@ -182,8 +182,10 @@ WindowContainer::WindowContainer(PHLWINDOW window) : window(window) {
   header = add<TextBox>(window, TITLECOLOR, FONTSIZE);
   snapshot = add<WindowSnapshot>(window);
   border = add<BorderBox>(window, BORDERSIZE, BORDERROUNDING, BORDERROUNDINGPOWER);
-  auto closeLabel = makeUnique<Label>("X", CHyprColor{1.0f, 1.0f, 1.0f, 1.0f}, FONTSIZE);
-  closeButton = add<Button>(CHyprColor{0.8f, 0.0f, 0.0f, 0.6f}, [this]() { g_pCompositor->closeWindow(this->window); }, std::move(closeLabel));
+  /* Button thing
+    auto closeLabel = makeUnique<Label>("X", CHyprColor{1.0f, 1.0f, 1.0f, 1.0f}, FONTSIZE);
+    closeButton = add<Button>(CHyprColor{0.8f, 0.0f, 0.0f, 0.6f}, [this]() { g_pCompositor->closeWindow(this->window); }, std::move(closeLabel));
+    */
   alpha = 1.0f;
 };
 

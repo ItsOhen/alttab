@@ -108,7 +108,7 @@ void CarouselManager::confirm() {
     // Fuck the stupid follow mouse behaviour. We force it.
     g_pInputManager->unconstrainMouse();
     window->m_relativeCursorCoordsOnLastWarp = g_pInputManager->getMouseCoordsInternal() - window->m_position;
-    Desktop::focusState()->fullWindowFocus(window, Desktop::eFocusReason::FOCUS_REASON_DESKTOP_STATE_CHANGE);
+    Desktop::focusState()->fullWindowFocus(window);
     if (window->m_monitor != MONITOR) {
       window->warpCursor();
       g_pInputManager->m_forcedFocus = window;
