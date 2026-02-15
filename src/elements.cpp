@@ -1,6 +1,8 @@
 #include "../include/elements.hpp"
 #include "../include/defines.hpp"
 #include "../include/helpers.hpp"
+#include "../include/manager.hpp"
+#include <src/Compositor.hpp>
 #define private public
 #include <hyprland/src/render/Renderer.hpp>
 #undef private
@@ -138,6 +140,10 @@ void WindowContainer::update(const double delta) {
 
   border->pos = Vector2D(0, 0);
   border->size = Vector2D(curSize.x, curSize.y);
+
+  closeButton->size = {header->fontsize, header->fontsize};
+  closeButton->pos = Vector2D((int)(curSize.x - closeButton->size.x), 0);
+  Log::logger->log(Log::TRACE, "[{}] WindowContainer::update, closeButton size: {}", PLUGIN_NAME, closeButton->size);
   Container::update(delta);
 }
 
@@ -146,11 +152,32 @@ void WindowContainer::draw(const Vector2D &offset) {
   Container::draw(offset.round());
 }
 
+bool WindowContainer::onMouseClick(const Vector2D &mousePos) {
+  if (closeButton && closeButton->onMouseClick(mousePos)) {
+    Log::logger->log(Log::ERR, "Close button clicked!");
+    return true;
+  }
+
+  if (Element::onMouseClick(mousePos)) {
+    Log::logger->log(Log::ERR, "Window body clicked, queueing selection update");
+    if (!g_pCarouselManager) {
+      Log::logger->log(Log::ERR, "CarouselManager not initialized");
+      return false;
+    }
+    g_pCarouselManager->updateSelection(this);
+    return true;
+  }
+
+  return false;
+}
 WindowContainer::WindowContainer(PHLWINDOW window) : window(window) {
   Log::logger->log(Log::TRACE, "[{}] WindowContainer::WindowContainer", PLUGIN_NAME);
   header = add<TextBox>(window, TITLECOLOR, FONTSIZE);
   snapshot = add<WindowSnapshot>(window);
   border = add<BorderBox>(window, BORDERSIZE, BORDERROUNDING, BORDERROUNDINGPOWER);
+  closeButton = add<Button>(CHyprColor{0.8f, 0.0f, 0.0f, 1.0f}, [this]() {
+    g_pCompositor->closeWindow(this->window);
+  });
 
   alpha = 1.0f;
 };
