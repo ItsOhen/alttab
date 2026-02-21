@@ -26,6 +26,11 @@ void CarouselManager::activate() {
   auto focusedWindow = Desktop::focusState()->window();
   bool foundFocus = false;
 
+  if (!MONITOR || !focusedWindow) {
+    Log::logger->log(Log::ERR, "Failed to get focused window or monitor");
+    return;
+  }
+
   int mIdx = 0;
   for (auto &[id, mon] : monitors) {
     for (size_t wIdx = 0; wIdx < mon.windows.size(); ++wIdx) {
@@ -125,19 +130,39 @@ bool CarouselManager::shouldIncludeWindow(PHLWINDOW w) {
     return true;
   return w->m_workspace && !w->m_workspace->m_isSpecialWorkspace;
 }
+
 void CarouselManager::rebuildAll() {
-  Log::logger->log(Log::TRACE, "[{}] rebuildAll", PLUGIN_NAME);
-  monitors.clear();
+  Log::logger->log(Log::TRACE, "[{}] rebuildAll (pruning)", PLUGIN_NAME);
+
+  if (!MONITOR || g_pCompositor->m_unsafeState || g_pCompositor->m_windows.empty())
+    return;
+
+  for (auto &[id, m] : monitors) {
+    std::erase_if(m.windows, [&](auto &container) {
+      auto window = container->window;
+
+      return !window ||
+             !window->m_isMapped ||
+             !shouldIncludeWindow(window) ||
+             window->m_monitor->m_id != id;
+    });
+  }
 
   for (auto &el : g_pCompositor->m_windows) {
-    if (!el || !el->m_isMapped || !el->m_monitor)
+    if (!el || !el->m_isMapped || !el->m_monitor || !shouldIncludeWindow(el))
       continue;
 
-    if (shouldIncludeWindow(el)) {
-      auto id = el->m_monitor->m_id;
+    auto id = el->m_monitor->m_id;
+
+    bool exists = std::any_of(monitors[id].windows.begin(), monitors[id].windows.end(), [&](auto &container) {
+      return container->window == el;
+    });
+
+    if (!exists) {
       monitors[id].windows.emplace_back(makeUnique<WindowContainer>(el));
     }
   }
+
   refreshLayout();
 }
 
@@ -280,7 +305,7 @@ void CarouselManager::update() {
   });
 
   int processed = 0;
-  const int FRAME_BUDGET = 2;
+  const int FRAME_BUDGET = 1;
   for (auto *w : needsUpdate) {
     if (processed >= FRAME_BUDGET)
       break;

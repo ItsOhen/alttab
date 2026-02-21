@@ -70,13 +70,12 @@ void WindowSnapshot::snapshot() {
 void WindowSnapshot::draw(const Vector2D &offset) {
   Log::logger->log(Log::TRACE, "[{}] WindowSnapshot::draw", PLUGIN_NAME);
   auto tex = fb.getTexture();
-  if (!tex) {
-    Log::logger->log(Log::ERR, "[{}] WindowSnapshot::draw, texture is NULL", PLUGIN_NAME);
-    return;
-  }
   CBox box = {pos, size};
   box.translate(offset);
-  g_pHyprOpenGL->renderTexture(tex, box, {.a = alphaAbs()});
+  if (!tex)
+    g_pHyprOpenGL->renderRect(box, CHyprColor{0, 0, 0, alphaAbs()}, {.round = 0});
+  else
+    g_pHyprOpenGL->renderTexture(tex, box, {.a = alphaAbs()});
 }
 
 void TextBox::update(const double delta) {

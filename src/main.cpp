@@ -6,6 +6,7 @@
 #include <linux/input-event-codes.h>
 #include <src/Compositor.hpp>
 #include <src/config/ConfigDataValues.hpp>
+#include <src/config/ConfigValue.hpp>
 #include <src/desktop/state/FocusState.hpp>
 #include <src/devices/IKeyboard.hpp>
 #include <src/managers/input/InputManager.hpp>
@@ -255,20 +256,24 @@ static void configHandleGradientDestroy(void **data) {
 
 static void onConfigReload() {
   Log::logger->log(Log::TRACE, "[{}] onConfigReload", PLUGIN_NAME);
-  FONTSIZE = std::any_cast<Hyprlang::INT>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:font_size")->getValue());
-  BORDERSIZE = std::any_cast<Hyprlang::INT>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:border_size")->getValue());
-  BORDERROUNDING = std::any_cast<Hyprlang::INT>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:border_rounding")->getValue());
-  BORDERROUNDINGPOWER = std::any_cast<Hyprlang::FLOAT>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:border_rounding_power")->getValue());
-  ACTIVEBORDERCOLOR = rc<CGradientValueData *>(std::any_cast<void *>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:border_active")->getValue()));
-  INACTIVEBORDERCOLOR = rc<CGradientValueData *>(std::any_cast<void *>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:border_inactive")->getValue()));
-  WINDOW_SPACING = std::any_cast<Hyprlang::INT>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:window_spacing")->getValue());
-  WINDOW_SIZE_INACTIVE = std::any_cast<Hyprlang::FLOAT>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:window_size_inactive")->getValue());
-  MONITOR_SPACING = std::any_cast<Hyprlang::INT>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:monitor_spacing")->getValue());
-  MONITOR_SIZE_ACTIVE = std::any_cast<Hyprlang::FLOAT>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:monitor_size_active")->getValue());
-  MONITOR_SIZE_INACTIVE = std::any_cast<Hyprlang::FLOAT>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:monitor_size_inactive")->getValue());
-  ANIMATIONSPEED = std::any_cast<Hyprlang::FLOAT>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:animation_speed")->getValue());
-  UNFOCUSEDALPHA = std::any_cast<Hyprlang::FLOAT>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:unfocused_alpha")->getValue());
-  INCLUDE_SPECIAL = std::any_cast<Hyprlang::INT>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:include_special")->getValue()) != 0;
+  try {
+    FONTSIZE = *CConfigValue<Hyprlang::INT>("plugin:alttab:font_size");
+    BORDERSIZE = *CConfigValue<Hyprlang::INT>("plugin:alttab:border_size");
+    BORDERROUNDING = *CConfigValue<Hyprlang::INT>("plugin:alttab:border_rounding");
+    BORDERROUNDINGPOWER = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:border_rounding_power");
+    ACTIVEBORDERCOLOR = rc<CGradientValueData *>(std::any_cast<void *>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:border_active")->getValue()));
+    INACTIVEBORDERCOLOR = rc<CGradientValueData *>(std::any_cast<void *>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:border_inactive")->getValue()));
+    WINDOW_SPACING = *CConfigValue<Hyprlang::INT>("plugin:alttab:window_spacing");
+    WINDOW_SIZE_INACTIVE = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:window_size_inactive");
+    MONITOR_SPACING = *CConfigValue<Hyprlang::INT>("plugin:alttab:monitor_spacing");
+    MONITOR_SIZE_ACTIVE = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:monitor_size_active");
+    MONITOR_SIZE_INACTIVE = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:monitor_size_inactive");
+    ANIMATIONSPEED = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:animation_speed");
+    UNFOCUSEDALPHA = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:unfocused_alpha");
+    INCLUDE_SPECIAL = *CConfigValue<Hyprlang::INT>("plugin:alttab:include_special");
+  } catch (const std::exception &e) {
+    Log::logger->log(Log::ERR, "Failed to get config value: {}", e.what());
+  }
   g_pCarouselManager->rebuildAll();
 }
 
