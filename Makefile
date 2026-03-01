@@ -7,13 +7,15 @@ all: release
 release:
 	cmake -B $(BUILD_DIR) -S . -DCMAKE_BUILD_TYPE=Release
 	cmake --build $(BUILD_DIR) -j$(CORES)
-
+debug:
+	cmake -B $(BUILD_DIR) -S . -DCMAKE_BUILD_TYPE=Debug
+	cmake --build $(BUILD_DIR) -j$(CORES)
+	
 run:
 	hyprland -c hl.conf
 trace:
 	HYPRLAND_TRACE=1 hyprland -c hl.conf
-debug:
-	HYPRLAND_TRACE=1 hyprland -c hl.conf
+
 run-rethonk:
 	~/dev/v_50/rethonk/Hyprland/think/Hyprland -c hl.conf
 run-rethonk-trace:

@@ -9,8 +9,9 @@ set(PROJECT_AUTHOR "Ergon")
 
 project(${PROJECT_NAME_FROM_DIR}
     DESCRIPTION "Alttab carousel preview thing"
-    VERSION 0.2.3
+    VERSION 0.3.0
 )
+
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -57,6 +58,7 @@ endif()
 
 #bitch ass dlopen garbage..
 target_compile_options(${PROJECT_NAME} PRIVATE
+    $<$<CXX_COMPILER_ID:Clang>:-Wno-unknown-argument>
     $<$<CXX_COMPILER_ID:GNU>:-fno-gnu-unique>
 )
 target_link_options(${PROJECT_NAME} PRIVATE
