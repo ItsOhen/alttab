@@ -12,8 +12,6 @@
 #include <src/render/Renderer.hpp>
 #undef private
 
-static const auto POWERSAVE = true;
-
 Monitor::Monitor(PHLMONITOR monitor) : monitor(monitor) {
   createTexture();
   activeWindow = 0;
@@ -69,9 +67,7 @@ void Monitor::renderTexture(const CRegion &damage) {
     throw std::runtime_error("No blurred or texture");
     return;
   }
-  const auto DIMENABLED = *CConfigValue<Hyprlang::INT>("plugin:alttab:dim");
-  const auto DIMAMOUNT = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:dim_amount");
-  const auto BLURBG = *CConfigValue<Hyprlang::INT>("plugin:alttab:blur");
+
   auto dmg = damage;
   const auto box = CBox{{0, 0}, monitor->m_size};
   /* Need a better way to do this
@@ -116,7 +112,7 @@ void Monitor::update(float delta) {
   const auto refresh = [&](int idx, auto &w) {
     w->needsRefresh = false;
     w->snapshot(cardSize);
-    g_pHyprRenderer->damageBox(getCardBox(idx).box);
+    monitor->addDamage(getCardBox(idx).box);
     damaged = true;
   };
 
@@ -128,14 +124,10 @@ void Monitor::update(float delta) {
       refresh(i, w);
     }
   }
+  animating = damaged;
 }
 
 void Monitor::draw(const CRegion &damage) {
-  const auto DIMENABLED = *CConfigValue<Hyprlang::INT>("plugin:alttab:dim");
-  const auto DIMAMOUNT = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:dim_amount");
-  const auto BLURBG = *CConfigValue<Hyprlang::INT>("plugin:alttab:blur");
-  const auto UNFOCUSEDALPHA = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:unfocused_alpha");
-
   LOG(ERR, "dim: {}, dimamount: {}, blur: {}", DIMENABLED, DIMAMOUNT, BLURBG);
 
   auto dmg = damage;
@@ -192,13 +184,19 @@ void Monitor::draw(const CRegion &damage) {
   });
 
   for (const auto &task : tasks) {
-    task.card->draw(task.data.box, task.data.alpha, task.data.scale);
-    dmg.add(task.data.box);
+    CRegion cardDmg = task.data.box;
+    cardDmg.intersect(damage);
+    if (cardDmg.empty())
+      continue;
+    task.card->draw(task.data.box, task.data.scale, task.data.alpha);
+    dmg.add(cardDmg);
   }
-  if (POWERSAVE)
-    g_pHyprRenderer->damageRegion(dmg);
-  else
-    g_pHyprRenderer->damageMonitor(monitor);
+  if (animating || !rotation.done()) {
+    if (POWERSAVE)
+      monitor->addDamage(dmg);
+    else
+      g_pHyprRenderer->damageMonitor(monitor);
+  }
 }
 
 Monitor::CardData Monitor::getCardBox(int index) {
@@ -314,6 +312,9 @@ void Manager::activate() {
 void Manager::deactivate() {
   LOG_SCOPE()
   active = false;
+  for (const auto &[id, mon] : monitors) {
+    g_pHyprRenderer->damageMonitor(mon->monitor);
+  }
 }
 
 void Manager::toggle() {
@@ -365,7 +366,11 @@ void Manager::draw(MONITORID monid, const CRegion &damage) {
 }
 
 void Manager::onConfigReload() {
-  ;
+  DIMENABLED = *CConfigValue<Hyprlang::INT>("plugin:alttab:dim");
+  DIMAMOUNT = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:dim_amount");
+  BLURBG = *CConfigValue<Hyprlang::INT>("plugin:alttab:blur");
+  UNFOCUSEDALPHA = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:unfocused_alpha");
+  POWERSAVE = *CConfigValue<Hyprlang::INT>("plugin:alttab:powersave");
 }
 
 void Manager::onWindowCreated(PHLWINDOW window) {
@@ -440,7 +445,9 @@ void Manager::rebuild() {
         mon->rotation.snap(angle);
       }
     }
-    g_pCompositor->scheduleFrameForMonitor(mon->monitor);
+    g_pHyprRenderer->damageMonitor(mon->monitor);
+    // damageMonitor should do this??
+    // g_pCompositor->scheduleFrameForMonitor(mon->monitor);
   }
 }
 void RenderPass::draw(const CRegion &damage) {

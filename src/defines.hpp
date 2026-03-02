@@ -9,6 +9,14 @@
 
 inline HANDLE PHANDLE = nullptr;
 
+inline bool DIMENABLED = true;
+inline bool BLURBG = true;
+inline bool POWERSAVE = true;
+inline bool INCLUDESPECIAL = true;
+
+inline float DIMAMOUNT = 0.3f;
+inline float UNFOCUSEDALPHA = 0.5f;
+
 using Timestamp = std::chrono::steady_clock::time_point;
 using DeltaTime = std::chrono::duration<long long, std::nano>;
 using FloatTime = std::chrono::duration<float>;

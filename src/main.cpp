@@ -1,3 +1,4 @@
+#include "defines.hpp"
 #include "manager.hpp"
 #include <src/Compositor.hpp>
 #include <src/SharedDefs.hpp>
@@ -184,10 +185,11 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:monitor_spacing", Hyprlang::INT{10});
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:monitor_size_active", Hyprlang::FLOAT{0.4});
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:monitor_size_inactive", Hyprlang::FLOAT{0.3});
-  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:blur", Hyprlang::INT{1});
-  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:unfocused_alpha", Hyprlang::FLOAT{0.6});
-  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:dim", Hyprlang::INT{1});
-  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:dim_amount", Hyprlang::FLOAT{0.15});
+  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:blur", Hyprlang::INT{BLURBG});
+  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:unfocused_alpha", Hyprlang::FLOAT{UNFOCUSEDALPHA});
+  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:dim", Hyprlang::INT{DIMENABLED});
+  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:dim_amount", Hyprlang::FLOAT{DIMAMOUNT});
+  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:powersave", Hyprlang::INT{POWERSAVE});
 
   try {
     auto keyhooklookup = HyprlandAPI::findFunctionsByName(PHANDLE, "onKeyEvent");
