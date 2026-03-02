@@ -52,7 +52,7 @@ public:
   void next();
   void prev();
   void rebuild();
-  void draw(const CRegion &damage);
+  void draw(MONITORID monid, const CRegion &damage);
 
   bool active = false;
 

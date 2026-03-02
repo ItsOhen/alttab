@@ -12,7 +12,7 @@
 #include <src/render/Renderer.hpp>
 #undef private
 
-static const auto POWERSAVE = false;
+static const auto POWERSAVE = true;
 
 Monitor::Monitor(PHLMONITOR monitor) : monitor(monitor) {
   createTexture();
@@ -65,16 +65,23 @@ void Monitor::createTexture() {
 }
 
 void Monitor::renderTexture(const CRegion &damage) {
+  if (!blurred || !texture) {
+    throw std::runtime_error("No blurred or texture");
+    return;
+  }
   const auto DIMENABLED = *CConfigValue<Hyprlang::INT>("plugin:alttab:dim");
   const auto DIMAMOUNT = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:dim_amount");
   const auto BLURBG = *CConfigValue<Hyprlang::INT>("plugin:alttab:blur");
   auto dmg = damage;
-  if (BLURBG)
-    g_pHyprOpenGL->renderTexture(blurred, monitor->logicalBox(), {.damage = &dmg});
-  else if (POWERSAVE)
-    g_pHyprOpenGL->renderTexture(texture, monitor->logicalBox(), {.damage = &dmg});
-  if (DIMENABLED)
+  const auto box = CBox{{0, 0}, monitor->m_size};
+  /* Need a better way to do this
+    if (DIMENABLED)
     g_pHyprOpenGL->renderRect(dmg.getExtents(), {0, 0, 0, DIMAMOUNT}, {});
+  */
+  if (BLURBG)
+    g_pHyprOpenGL->renderTexture(blurred, box, {.damage = &dmg});
+  else if (POWERSAVE)
+    g_pHyprOpenGL->renderTexture(texture, box, {.damage = &dmg});
 }
 
 WP<WindowCard> Monitor::addWindow(PHLWINDOW window) {
@@ -185,13 +192,13 @@ void Monitor::draw(const CRegion &damage) {
   });
 
   for (const auto &task : tasks) {
-    // g_pHyprRenderer->damageBox(task.box);
     task.card->draw(task.data.box, task.data.alpha, task.data.scale);
-    if (POWERSAVE)
-      g_pHyprRenderer->damageBox(task.data.box);
-    else
-      g_pHyprRenderer->damageMonitor(monitor);
+    dmg.add(task.data.box);
   }
+  if (POWERSAVE)
+    g_pHyprRenderer->damageRegion(dmg);
+  else
+    g_pHyprRenderer->damageMonitor(monitor);
 }
 
 Monitor::CardData Monitor::getCardBox(int index) {
@@ -256,7 +263,7 @@ Monitor::CardData Monitor::getCardBox(int index) {
   // bring the damn thing back to center.. Stupid tilt getting me everytime..
   pos.y = center.y - (z * tiltOffset) - (size.y / 2.0f) - ((focusBonus * baseSize.y) * 0.5f);
 
-  return {.box = CBox{pos + monitor->m_position, size}, .scale = s};
+  return {.box = CBox{pos, size}, .scale = s};
 }
 
 void Monitor::select(int index) {
@@ -347,10 +354,13 @@ void Manager::prev() {
   monitors[activeMonitor]->prev();
 }
 
-void Manager::draw(const CRegion &damage) {
+void Manager::draw(MONITORID monid, const CRegion &damage) {
   LOG_SCOPE()
-  for (const auto &[id, m] : monitors) {
-    m->draw(damage);
+  const auto cur = Desktop::focusState()->monitor();
+  if (monid == cur->m_id)
+    monitors[monid]->draw(damage);
+  else {
+    monitors[monid]->renderTexture(damage);
   }
 }
 
@@ -408,34 +418,32 @@ void Manager::rebuild() {
     if (!m->m_enabled)
       continue;
     monitors[m->m_id] = makeUnique<Monitor>(m);
-    g_pCompositor->scheduleFrameForMonitor(m);
   }
 
   auto activeWindow = Desktop::focusState()->window();
 
-  for (auto &[monID, pMonitor] : monitors) {
+  for (auto &[monID, mon] : monitors) {
     std::vector<PHLWINDOW> monitorWindows;
     for (const auto &w : g_pCompositor->m_windows) {
       if (!INCLUDESPECIAL && w->m_workspace && w->m_workspace->m_isSpecialWorkspace)
         continue;
-      if (w->m_isMapped && w->m_monitor.lock() && w->m_monitor.lock()->m_id == monID)
+      if (w->m_isMapped && w->m_monitor.lock())
         monitorWindows.emplace_back(w);
     }
 
     for (const auto &w : monitorWindows) {
-      auto card = pMonitor->addWindow(w);
+      auto card = mon->addWindow(w);
       if (w == activeWindow) {
-        pMonitor->activeWindow = pMonitor->windows.size() - 1;
+        mon->activeWindow = mon->windows.size() - 1;
         const int count = monitorWindows.size();
-        const float angle = (M_PI / 2.0f) - ((2.0f * M_PI * pMonitor->activeWindow) / count);
-        pMonitor->rotation.snap(angle);
-      }
-      if (w->wlSurface() && w->wlSurface()->resource()) {
-        w->wlSurface()->resource()->frame(NOW);
+        const float angle = (M_PI / 2.0f) - ((2.0f * M_PI * mon->activeWindow) / count);
+        mon->rotation.snap(angle);
       }
     }
+    g_pCompositor->scheduleFrameForMonitor(mon->monitor);
   }
 }
 void RenderPass::draw(const CRegion &damage) {
-  manager->draw(damage);
+  const auto MON = g_pHyprOpenGL->m_renderData.pMonitor;
+  manager->draw(MON->m_id, damage);
 }
