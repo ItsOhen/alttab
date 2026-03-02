@@ -61,12 +61,14 @@ private:
   void onWindowCreated(PHLWINDOW window);
   void onWindowDestroyed(PHLWINDOW window);
   void onRender(eRenderStage stage);
+  void onFocusChange(PHLMONITOR monitor);
 
   struct {
     CHyprSignalListener config;
     CHyprSignalListener windowCreated;
     CHyprSignalListener windowDestroyed;
     CHyprSignalListener render;
+    CHyprSignalListener focusChange;
   } listeners;
 
   MONITORID activeMonitor = MONITOR_INVALID;

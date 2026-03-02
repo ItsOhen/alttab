@@ -298,6 +298,9 @@ Manager::Manager() {
   listeners.render = HOOK_EVENT(render.stage, [this](auto s) {
     onRender(s);
   });
+  listeners.focusChange = HOOK_EVENT(monitor.focused, [this](auto m) {
+    onFocusChange(m);
+  });
 
   lastFrame = NOW;
 }
@@ -412,6 +415,12 @@ void Manager::onRender(eRenderStage stage) {
   default:
     break;
   }
+}
+
+void Manager::onFocusChange(PHLMONITOR monitor) {
+  if (monitor == nullptr)
+    return;
+  activeMonitor = monitor->m_id;
 }
 
 void Manager::rebuild() {
