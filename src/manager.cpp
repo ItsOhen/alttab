@@ -26,7 +26,7 @@ void Monitor::createTexture() {
   CRegion fullRegion = CBox({0, 0}, monitor->m_size);
 
   g_pHyprRenderer->beginRender(monitor, fullRegion, RENDER_MODE_FULL_FAKE, nullptr, &bgFb, false);
-  g_pHyprRenderer->renderWorkspace(monitor, monitor->m_activeWorkspace, NOW, monitor->logicalBox());
+  g_pHyprRenderer->renderWorkspace(monitor, monitor->m_activeWorkspace, NOW, fullRegion.getExtents());
   g_pHyprRenderer->m_renderPass.render(fullRegion);
   g_pHyprRenderer->m_renderPass.clear();
   g_pHyprRenderer->endRender();
@@ -103,7 +103,6 @@ void Monitor::prev() {
 }
 void Monitor::update(float delta) {
   // LOG_SCOPE(Log::ERR)
-  const auto ROTATIONSPEED = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:animation_speed");
   rotation.tick(delta, ROTATIONSPEED);
   bool damaged = rotation.done();
 
@@ -212,8 +211,8 @@ Monitor::CardData Monitor::getCardBox(int index) {
   if (aspect <= 0)
     aspect = 1.77f;
 
-  const float maxHeight = monitor->m_size.y * 0.25f;
-  const float maxWidth = monitor->m_size.x * 0.35f;
+  const float maxHeight = monitor->m_size.y * WINDOWSIZE;
+  const float maxWidth = monitor->m_size.x * (WINDOWSIZE * 1.5);
 
   Vector2D baseSize;
   baseSize.y = maxHeight;
@@ -227,14 +226,13 @@ Monitor::CardData Monitor::getCardBox(int index) {
   const Vector2D center = monitor->m_size / 2.0f;
   const int count = windows.size();
   // size of the spinnyboi
-  float dynamicRadius = (count * 400.0f) / (2.0f * M_PI);
-  const float radius = std::clamp(dynamicRadius, 400.0f, (float)monitor->m_size.x * 0.95f);
-  const float tiltOffset = -75.0f;
+  const float radius = (monitor->m_size.x * 0.5f) * CAROUSELSIZE;
+  const float stretchX = 1.4f;
 
   // viewport position
   float baseAngle = ((2.0f * M_PI * index) / count) + rotation.current;
-  float warpedAngle = baseAngle - 0.3f * std::sin(2.0f * baseAngle);
-  float angle = warpedAngle;
+  float warpScale = WARP + (1.0f - WINDOWSIZEINACTIVE) * 0.2f;
+  float angle = baseAngle - warpScale * std::sin(2.0f * baseAngle);
   float z = std::sin(angle);
 
   // clamp to [0, 2PI] so we don't spin out of control (even though it looks very funny)
@@ -248,18 +246,21 @@ Monitor::CardData Monitor::getCardBox(int index) {
 
   // scale focused so it stands out abit
   float focusWeight = std::max(0.0, (double)(1.0f - (dist / (M_PI / 2.0f))));
-  float focusBonus = std::pow(focusWeight, 2.5) * 0.3f;
+  float focusFactor = std::pow(focusWeight, 2.5);
+  float depthFalloff = std::lerp(WINDOWSIZEINACTIVE, 1.0f, (z + 1.0f) / 2.0f);
+  float zoom = std::lerp(1.0f, WINDOWSIZEACTIVE, focusFactor);
 
-  float s = 0.7f + (z + 1.0f) * 0.15f + focusBonus;
-
+  float s = depthFalloff * zoom;
   s = std::max(s, 0.01f);
-
   Vector2D size = baseSize * s;
+
+  float radiusScale = radius * std::lerp(0.85f, 1.0f, (z + 1.0f) / 2.0f);
+  float tiltRadian = TILT * (M_PI / 180.0f);
+  float tiltOffset = radius * std::sin(tiltRadian);
+
   Vector2D pos;
-  const float stretchX = 1.4f;
-  pos.x = center.x + (radius * stretchX) * std::cos(angle) - (size.x / 2.0f);
-  // bring the damn thing back to center.. Stupid tilt getting me everytime..
-  pos.y = center.y - (z * tiltOffset) - (size.y / 2.0f) - ((focusBonus * baseSize.y) * 0.5f);
+  pos.x = center.x + (radiusScale * stretchX) * std::cos(angle) - (size.x / 2.0f);
+  pos.y = (center.y - tiltOffset) - (z * -tiltOffset) - (size.y / 2.0f);
 
   return {.box = CBox{pos, size}, .scale = s};
 }
@@ -300,6 +301,12 @@ Manager::Manager() {
   });
   listeners.focusChange = HOOK_EVENT(monitor.focused, [this](auto m) {
     onFocusChange(m);
+  });
+  listeners.monitorAdded = HOOK_EVENT(monitor.added, [this](auto m) {
+    rebuild();
+  });
+  listeners.monitorRemoved = HOOK_EVENT(monitor.removed, [this](auto m) {
+    rebuild();
   });
 
   lastFrame = NOW;
@@ -374,10 +381,18 @@ void Manager::onConfigReload() {
   BLURBG = *CConfigValue<Hyprlang::INT>("plugin:alttab:blur");
   UNFOCUSEDALPHA = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:unfocused_alpha");
   POWERSAVE = *CConfigValue<Hyprlang::INT>("plugin:alttab:powersave");
+  ROTATIONSPEED = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:animation_speed");
+  CAROUSELSIZE = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:carousel_size");
+  WINDOWSIZE = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:window_size");
+  WARP = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:warp");
+  TILT = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:tilt");
+  WINDOWSIZEACTIVE = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:window_size_active");
+  WINDOWSIZEINACTIVE = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:window_size_inactive");
 }
 
 void Manager::onWindowCreated(PHLWINDOW window) {
-  ;
+  // TODO: add window to specific monitor
+  rebuild();
 }
 
 void Manager::onWindowDestroyed(PHLWINDOW window) {

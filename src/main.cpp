@@ -176,20 +176,20 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:border_rounding_power", Hyprlang::FLOAT{2});
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:border_active", Hyprlang::CConfigCustomValueType{&configHandleGradientSet, &configHandleGradientDestroy, "0xff00ccdd"});
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:border_inactive", Hyprlang::CConfigCustomValueType{&configHandleGradientSet, &configHandleGradientDestroy, "0xaabbccddff"});
-  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:window_spacing", Hyprlang::INT{10});
-  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:window_size_inactive", Hyprlang::FLOAT{0.8});
-  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:monitor_size", Hyprlang::FLOAT{0.3});
-  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:animation_speed", Hyprlang::FLOAT{1.0});
+  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:animation_speed", Hyprlang::FLOAT{ROTATIONSPEED});
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:unfocused_alpha", Hyprlang::FLOAT{0.6});
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:include_special", Hyprlang::INT{1});
-  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:monitor_spacing", Hyprlang::INT{10});
-  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:monitor_size_active", Hyprlang::FLOAT{0.4});
-  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:monitor_size_inactive", Hyprlang::FLOAT{0.3});
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:blur", Hyprlang::INT{BLURBG});
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:unfocused_alpha", Hyprlang::FLOAT{UNFOCUSEDALPHA});
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:dim", Hyprlang::INT{DIMENABLED});
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:dim_amount", Hyprlang::FLOAT{DIMAMOUNT});
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:powersave", Hyprlang::INT{POWERSAVE});
+  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:carousel_size", Hyprlang::FLOAT{CAROUSELSIZE});
+  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:window_size", Hyprlang::FLOAT{WINDOWSIZE});
+  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:window_size_active", Hyprlang::FLOAT{WINDOWSIZEACTIVE});
+  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:window_size_inactive", Hyprlang::FLOAT{WINDOWSIZEINACTIVE});
+  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:warp", Hyprlang::FLOAT{WARP});
+  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:tilt", Hyprlang::FLOAT{TILT});
 
   try {
     auto keyhooklookup = HyprlandAPI::findFunctionsByName(PHANDLE, "onKeyEvent");

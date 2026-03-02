@@ -69,6 +69,8 @@ private:
     CHyprSignalListener windowDestroyed;
     CHyprSignalListener render;
     CHyprSignalListener focusChange;
+    CHyprSignalListener monitorAdded;
+    CHyprSignalListener monitorRemoved;
   } listeners;
 
   MONITORID activeMonitor = MONITOR_INVALID;
