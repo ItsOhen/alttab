@@ -32,4 +32,7 @@ install:
 	cp build/$(TARGET).so ~/.config/hypr/plugins/$(TARGET).so
 	hyprctl plugin load ~/.config/hypr/plugins/$(TARGET).so
 
-.PHONY: all release run trace debug
+clean:
+	rm -rf $(BUILD_DIR)
+
+.PHONY: all release run trace debug clean

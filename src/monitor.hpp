@@ -25,6 +25,7 @@ public:
   PHLWINDOW select(int card);
 
   bool animating = false;
+  CRegion lastDamage;
   AnimatedValue<float> rotation;
   AnimatedValue<float> zoom;
   AnimatedValue<float> alpha;

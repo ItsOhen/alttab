@@ -39,5 +39,9 @@ private:
   std::string title;
   SP<CTexture> titleTexture;
   double lastWidth = 0;
+#ifdef HYPRLAND_NEW_EVENTS
   CHyprSignalListener commit;
+#else
+  SP<HOOK_CALLBACK_FN> commit;
+#endif
 };

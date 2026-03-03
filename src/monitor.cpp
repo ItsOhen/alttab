@@ -185,10 +185,14 @@ void Monitor::draw(const CRegion &damage, const float &offset = 0.0f, const bool
     g_pHyprOpenGL->renderRect(dmg.getExtents(), {0.5, 0.5, 0.0, 0.5}, {});
 #endif
   if (animating) {
-    if (POWERSAVE)
-      monitor->addDamage(dmg);
-    else
+    if (POWERSAVE) {
+      CRegion totalDamage = dmg;
+      totalDamage.add(lastDamage);
+      monitor->addDamage(totalDamage);
+      lastDamage = dmg;
+    } else {
       g_pHyprRenderer->damageMonitor(monitor);
+    }
   }
 }
 

@@ -29,6 +29,7 @@ private:
   void onRender(eRenderStage stage);
   void onFocusChange(PHLMONITOR monitor);
 
+#ifdef HYPRLAND_NEW_EVENTS
   struct {
     CHyprSignalListener config;
     CHyprSignalListener windowCreated;
@@ -38,6 +39,17 @@ private:
     CHyprSignalListener monitorAdded;
     CHyprSignalListener monitorRemoved;
   } listeners;
+#else
+  struct {
+    SP<HOOK_CALLBACK_FN> config;
+    SP<HOOK_CALLBACK_FN> windowCreated;
+    SP<HOOK_CALLBACK_FN> windowDestroyed;
+    SP<HOOK_CALLBACK_FN> render;
+    SP<HOOK_CALLBACK_FN> focusChange;
+    SP<HOOK_CALLBACK_FN> monitorAdded;
+    SP<HOOK_CALLBACK_FN> monitorRemoved;
+  } listeners;
+#endif
 
   MONITORID activeMonitor = MONITOR_INVALID;
   Timestamp lastFrame;
@@ -51,7 +63,7 @@ inline UP<Manager> manager;
 class RenderPass : public IPassElement {
 public:
   virtual void draw(const CRegion &damage);
-  virtual bool needsLiveBlur() { return false; }
+  virtual bool needsLiveBlur() { return BLURBG && !POWERSAVE; }
   virtual bool needsPrecomputeBlur() { return false; }
   virtual const char *passName() { return "TabCarouselPassElement"; }
 };

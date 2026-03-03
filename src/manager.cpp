@@ -20,6 +20,7 @@ static int lastCounter = 0;
 
 Manager::Manager() {
   LOG_SCOPE()
+#ifdef HYPRLAND_NEW_EVENTS
   listeners.config = HOOK_EVENT(config.reloaded, [this]() {
     onConfigReload();
   });
@@ -41,6 +42,22 @@ Manager::Manager() {
   listeners.monitorRemoved = HOOK_EVENT(monitor.removed, [this](auto m) {
     rebuild();
   });
+#else
+  listeners.config = HyprlandAPI::registerCallbackDynamic(PHANDLE, "configReloaded",
+                                                          [this](void *self, SCallbackInfo &info, std::any data) { onConfigReload(); });
+  listeners.windowCreated = HyprlandAPI::registerCallbackDynamic(PHANDLE, "openWindow",
+                                                                 [this](void *self, SCallbackInfo &info, std::any data) { onWindowCreated(std::any_cast<PHLWINDOW>(data)); });
+  listeners.windowDestroyed = HyprlandAPI::registerCallbackDynamic(PHANDLE, "closeWindow",
+                                                                   [this](void *self, SCallbackInfo &info, std::any data) { onWindowDestroyed(std::any_cast<PHLWINDOW>(data)); });
+  listeners.render = HyprlandAPI::registerCallbackDynamic(PHANDLE, "render",
+                                                          [this](void *self, SCallbackInfo &info, std::any data) { onRender(std::any_cast<eRenderStage>(data)); });
+  listeners.focusChange = HyprlandAPI::registerCallbackDynamic(PHANDLE, "monitorFocusChange",
+                                                               [this](void *self, SCallbackInfo &info, std::any data) { onFocusChange(std::any_cast<PHLMONITOR>(data)); });
+  listeners.monitorAdded = HyprlandAPI::registerCallbackDynamic(PHANDLE, "monitorAdded",
+                                                                [this](void *self, SCallbackInfo &info, std::any data) { rebuild(); });
+  listeners.monitorRemoved = HyprlandAPI::registerCallbackDynamic(PHANDLE, "monitorRemoved",
+                                                                  [this](void *self, SCallbackInfo &info, std::any data) { rebuild(); });
+#endif
 
   lastFrame = lastUpdate = NOW;
 }
@@ -79,7 +96,11 @@ void Manager::confirm() {
   auto selected = mon->windows[mon->activeWindow]->window;
   if (BRINGTOACTIVE)
     g_pKeybindManager->m_dispatchers["focusworkspaceoncurrentmonitor"](selected->m_workspace->m_name);
+#ifdef HYPRLAND_NEW_EVENTS
   Desktop::focusState()->fullWindowFocus(selected, Desktop::FOCUS_REASON_KEYBIND);
+#else
+  Desktop::focusState()->fullWindowFocus(selected);
+#endif
   deactivate();
 }
 
@@ -119,7 +140,8 @@ void Manager::draw(MONITORID monid, const CRegion &damage) {
   auto dmg = damage;
 
   if (!POWERSAVE) {
-    g_pHyprOpenGL->renderRect(dmg.getExtents(), CHyprColor(0.0, 0.0, 0.0, (DIMENABLED) ? DIMAMOUNT : 0), {.blur = sc<bool>(BLURBG)});
+    CBox monBox = {{0, 0}, cur->m_pixelSize};
+    g_pHyprOpenGL->renderRect(monBox, CHyprColor(0.0, 0.0, 0.0, (DIMENABLED) ? DIMAMOUNT : 0), {.blur = sc<bool>(BLURBG)});
   } else {
     if (monitors.contains(monid))
       monitors[monid]->renderTexture(damage);
@@ -160,8 +182,12 @@ void Manager::draw(MONITORID monid, const CRegion &damage) {
       Overlay->add(std::format("monitor->m_size.x: {}, monitor->m_size.y: {}\nmonitor->m_pixelSize.x: {}, monitor->m_pixelSize.y: {}", monitors[activeMonitor]->monitor->m_size.x, monitors[activeMonitor]->monitor->m_size.y, monitors[activeMonitor]->monitor->m_size.x, monitors[activeMonitor]->monitor->m_size.y));
 #endif
     }
-    if (monitors[activeMonitor]->animating)
+    bool isMonitorAnimating = !monitorOffset.done();
+    if (monitors[activeMonitor]->animating || isMonitorAnimating)
       g_pCompositor->scheduleFrameForMonitor(monitors[activeMonitor]->monitor);
+
+    if (isMonitorAnimating && !POWERSAVE)
+      g_pHyprRenderer->damageMonitor(cur);
   }
 
 #ifndef NDEBUG

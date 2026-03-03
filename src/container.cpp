@@ -7,11 +7,23 @@
 #include <src/render/Renderer.hpp>
 
 WindowCard::WindowCard(PHLWINDOW window) : window(window) {
+#ifdef HYPRLAND_NEW_EVENTS
   commit = window->wlSurface()->resource()->m_events.commit.listen([this] {
     needsSnapshot = true;
     ready = false;
     lastCommit = NOW;
   });
+#else
+  commit = HyprlandAPI::registerCallbackDynamic(PHANDLE, "commit",
+                                                [this](void *self, SCallbackInfo &info, std::any data) {
+                                                  auto committedWindow = std::any_cast<PHLWINDOW>(data);
+                                                  if (committedWindow != this->window)
+                                                    return;
+                                                  needsSnapshot = true;
+                                                  ready = false;
+                                                  lastCommit = NOW;
+                                                });
+#endif
   borderColor = CGradientValueData(Colors::YELLOW);
 }
 

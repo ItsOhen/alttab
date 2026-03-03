@@ -2,11 +2,14 @@
 #include "logger.hpp"
 #include <src/config/ConfigDataValues.hpp>
 #include <src/desktop/DesktopTypes.hpp>
+#ifdef HYPRLAND_NEW_EVENTS
 #include <src/event/EventBus.hpp>
+#define HOOK_EVENT(PATH, LAMBDA) Event::bus()->m_events.PATH.listen(LAMBDA);
+#else
+#include <src/plugins/HookSystem.hpp>
+#endif
 #include <src/helpers/Color.hpp>
 #include <src/plugins/PluginAPI.hpp>
-
-#define HOOK_EVENT(PATH, LAMBDA) Event::bus()->m_events.PATH.listen(LAMBDA);
 
 inline HANDLE PHANDLE = nullptr;
 

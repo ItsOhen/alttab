@@ -46,6 +46,13 @@ add_library(${PROJECT_NAME} SHARED ${SRC})
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(hyprland REQUIRED IMPORTED_TARGET hyprland)
 
+if(hyprland_VERSION VERSION_GREATER_EQUAL "0.54.0")
+  message(STATUS "Hyprland >= 0.54.0 detected — using new EventBus API")
+  target_compile_definitions(${PROJECT_NAME} PRIVATE HYPRLAND_NEW_EVENTS)
+else()
+  message(STATUS "Hyprland < 0.54.0 detected — using legacy HookSystem API")
+endif()
+
 if(ENABLE_PROTOCOLS)
   pkg_check_modules(hyprwire REQUIRED IMPORTED_TARGET hyprwire)
 endif()
