@@ -7,6 +7,11 @@
 #include <src/render/Renderer.hpp>
 
 WindowCard::WindowCard(PHLWINDOW window) : window(window) {
+  commit = window->wlSurface()->resource()->m_events.commit.listen([this] {
+    needsSnapshot = true;
+    ready = false;
+    lastCommit = NOW;
+  });
   borderColor = CGradientValueData(Colors::YELLOW);
 }
 
@@ -53,23 +58,23 @@ void WindowCard::draw(const CBox &box, const float scale, const float alpha = 1.
 #endif
 }
 
-void WindowCard::snapshot(const Vector2D &targetSize) {
+bool WindowCard::snapshot(const Vector2D &targetSize) {
   if (!window || !window->wlSurface() || !window->wlSurface()->resource()) {
     LOG(ERR, "No window or surface");
-    return;
+    return false;
   }
   if (targetSize.x <= 1 || targetSize.y <= 1) {
     LOG(ERR, "targetSize.x ({}) <= 1 || targetSize.y ({}) <= 1", targetSize.x, targetSize.y);
-    return;
+    return false;
   }
 
   if (targetSize.x <= 1 || targetSize.y <= 1)
-    return;
+    return false;
 
   auto surfaceSize = window->wlSurface()->getSurfaceBoxGlobal().value_or({0, 0, 0, 0}).size();
   if (surfaceSize.x < 1.0 || surfaceSize.y < 1.0) {
     Log::logger->log(Log::ERR, "[{}] WindowSnapshot::update, invalid surface size: {}", PLUGIN_NAME, surfaceSize);
-    return;
+    return false;
   }
 
   const auto MONITOR = Desktop::focusState()->monitor();
@@ -83,7 +88,7 @@ void WindowCard::snapshot(const Vector2D &targetSize) {
 
   CRegion fbBox = CBox{{0, 0}, targetSize};
   if (!g_pHyprRenderer->beginRender(MONITOR, fbBox, RENDER_MODE_FULL_FAKE, nullptr, &fb)) {
-    return;
+    return false;
   }
 
   g_pHyprOpenGL->clear(CHyprColor{0, 0, 0, 1.0f});
@@ -111,6 +116,7 @@ void WindowCard::snapshot(const Vector2D &targetSize) {
   g_pHyprRenderer->endRender();
   lastCommit = NOW;
   ready = true;
+  return true;
 }
 
 void WindowCard::drawTitle(const CBox &box, const float scale, const float alpha) {

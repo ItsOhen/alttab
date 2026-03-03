@@ -78,9 +78,9 @@ void Monitor::renderTexture(const CRegion &damage) {
     g_pHyprOpenGL->renderRect(dmg.getExtents(), {0, 0, 0, DIMAMOUNT}, {});
   */
   if (BLURBG)
-    g_pHyprOpenGL->renderTexture(blurred, box, {.damage = &dmg});
+    g_pHyprOpenGL->renderTexture(blurred, box, {});
   else if (POWERSAVE)
-    g_pHyprOpenGL->renderTexture(texture, box, {.damage = &dmg});
+    g_pHyprOpenGL->renderTexture(texture, box, {});
 }
 
 WP<WindowCard> Monitor::addWindow(PHLWINDOW window) {
@@ -107,18 +107,16 @@ void Monitor::update(float delta, const bool active = false) {
   zoom.tick(delta, MONITORANIMATIONSPEED);
   alpha.set(active ? 1.0f : 0.0f, false);
   alpha.tick(delta, MONITORANIMATIONSPEED);
-  bool damaged = rotation.done();
+  bool damaged = (!rotation.done() || !zoom.done() || !alpha.done());
 
   const auto MONITOR = Desktop::focusState()->monitor();
   Vector2D cardSize = (MONITOR->m_size * MONITOR->m_scale) * WINDOWSIZE;
-  auto since = std::chrono::duration_cast<std::chrono::milliseconds>(NOW - lastFrame).count();
-  for (auto i = 0; i < windows.size(); ++i) {
-    auto &w = windows[i];
-    bool hasNoTexture = !w->fb.m_fb || !w->ready;
-    const auto since = std::chrono::duration_cast<std::chrono::milliseconds>(NOW - w->lastCommit).count();
-    const auto th = (activeWindow == i) ? 33 : 100;
-    if (hasNoTexture || (since >= th)) {
-      w->snapshot(cardSize);
+  int snapshotsThisFrame = 0;
+  const int MAX_SNAPSHOTS_PER_FRAME = 3;
+  for (auto &w : windows) {
+    if (!w->ready && snapshotsThisFrame < MAX_SNAPSHOTS_PER_FRAME) {
+      damaged |= w->snapshot(cardSize);
+      snapshotsThisFrame++;
     }
   }
   animating = damaged;
@@ -127,7 +125,7 @@ void Monitor::update(float delta, const bool active = false) {
 void Monitor::draw(const CRegion &damage, const float &offset = 0.0f, const bool active = false) {
   LOG(ERR, "dim: {}, dimamount: {}, blur: {}", DIMENABLED, DIMAMOUNT, BLURBG);
 
-  auto dmg = damage;
+  CRegion dmg;
   const int count = windows.size();
   if (count == 0)
     return;
@@ -179,13 +177,14 @@ void Monitor::draw(const CRegion &damage, const float &offset = 0.0f, const bool
 
   for (const auto &task : tasks) {
     CRegion cardDmg = task.data.box;
-    cardDmg.intersect(damage);
-    if (cardDmg.empty())
-      continue;
     task.card->draw(task.data.box, task.data.scale, task.data.alpha);
     dmg.add(cardDmg);
   }
-  if (animating || !rotation.done()) {
+#ifndef NDEBUG
+  if (!dmg.empty())
+    g_pHyprOpenGL->renderRect(dmg.getExtents(), {0.5, 0.5, 0.0, 0.5}, {});
+#endif
+  if (animating) {
     if (POWERSAVE)
       monitor->addDamage(dmg);
     else

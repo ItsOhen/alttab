@@ -43,6 +43,7 @@ private:
   Timestamp lastFrame;
   std::map<MONITORID, UP<Monitor>> monitors;
   AnimatedValue<float> monitorOffset;
+  Timestamp lastUpdate;
 };
 
 inline UP<Manager> manager;

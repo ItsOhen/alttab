@@ -13,6 +13,11 @@
 #include <src/render/Renderer.hpp>
 #undef private
 
+#ifndef NDEBUG
+static int counter = 0;
+static int lastCounter = 0;
+#endif
+
 Manager::Manager() {
   LOG_SCOPE()
   listeners.config = HOOK_EVENT(config.reloaded, [this]() {
@@ -37,7 +42,7 @@ Manager::Manager() {
     rebuild();
   });
 
-  lastFrame = NOW;
+  lastFrame = lastUpdate = NOW;
 }
 
 void Manager::activate() {
@@ -89,19 +94,23 @@ void Manager::update(float delta) {
 void Manager::up() {
   activeMonitor = (activeMonitor - 1 + monitors.size()) % monitors.size();
   monitorOffset.set(activeMonitor, false);
+  g_pCompositor->scheduleFrameForMonitor(monitors[activeMonitor]->monitor);
 }
 
 void Manager::down() {
   activeMonitor = (activeMonitor + 1) % monitors.size();
   monitorOffset.set(activeMonitor, false);
+  g_pCompositor->scheduleFrameForMonitor(monitors[activeMonitor]->monitor);
 }
 
 void Manager::next() {
   monitors[activeMonitor]->next();
+  g_pCompositor->scheduleFrameForMonitor(monitors[activeMonitor]->monitor);
 }
 
 void Manager::prev() {
   monitors[activeMonitor]->prev();
+  g_pCompositor->scheduleFrameForMonitor(monitors[activeMonitor]->monitor);
 }
 
 void Manager::draw(MONITORID monid, const CRegion &damage) {
@@ -151,8 +160,13 @@ void Manager::draw(MONITORID monid, const CRegion &damage) {
       Overlay->add(std::format("monitor->m_size.x: {}, monitor->m_size.y: {}\nmonitor->m_pixelSize.x: {}, monitor->m_pixelSize.y: {}", monitors[activeMonitor]->monitor->m_size.x, monitors[activeMonitor]->monitor->m_size.y, monitors[activeMonitor]->monitor->m_size.x, monitors[activeMonitor]->monitor->m_size.y));
 #endif
     }
+    if (monitors[activeMonitor]->animating)
+      g_pCompositor->scheduleFrameForMonitor(monitors[activeMonitor]->monitor);
   }
+
+#ifndef NDEBUG
   Overlay->draw(cur);
+#endif
 }
 
 void Manager::onConfigReload() {
@@ -211,6 +225,7 @@ void Manager::onRender(eRenderStage stage) {
   if (!active)
     return;
 
+  static bool redraw = false;
   switch (stage) {
   case eRenderStage::RENDER_PRE:
     update(FloatTime(NOW - lastFrame).count());

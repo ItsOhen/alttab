@@ -4,6 +4,7 @@
 #include "defines.hpp"
 #include <hyprutils/math/Region.hpp>
 #include <hyprutils/math/Vector2D.hpp>
+#include <hyprutils/signal/Listener.hpp>
 #include <src/config/ConfigDataValues.hpp>
 #include <src/helpers/time/Time.hpp>
 #define private public
@@ -15,7 +16,7 @@ class WindowCard {
 public:
   WindowCard(PHLWINDOW window);
   ~WindowCard();
-  void snapshot(const Vector2D &targetSize);
+  bool snapshot(const Vector2D &targetSize);
   void draw(const CBox &box, const float scale, const float alpha);
   void drawTitle(const CBox &box, const float scale, const float alpha);
   void drawBorder(const float alpha);
@@ -26,6 +27,7 @@ public:
   Timestamp lastCommit;
   float z = 0.0f;
   bool isActive = false;
+  bool needsSnapshot = true;
 
 private:
   CBox contentBox;
@@ -37,4 +39,5 @@ private:
   std::string title;
   SP<CTexture> titleTexture;
   double lastWidth = 0;
+  CHyprSignalListener commit;
 };
