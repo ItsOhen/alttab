@@ -17,7 +17,7 @@ struct AnimatedValue {
     set(val, true);
   }
 
-  void set(T val, bool snap) {
+  void set(T val, bool snap = false) {
     if (snap) {
       current = start = target = val;
       progress = 1.0f;

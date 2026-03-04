@@ -1,12 +1,7 @@
 #include "defines.hpp"
 #include "manager.hpp"
-#include <src/Compositor.hpp>
-#include <src/SharedDefs.hpp>
 #include <src/desktop/state/FocusState.hpp>
-#include <src/helpers/Color.hpp>
 #include <src/managers/input/InputManager.hpp>
-#include <src/plugins/HookSystem.hpp>
-#include <src/plugins/PluginAPI.hpp>
 #include <src/render/Renderer.hpp>
 
 CFunctionHook *keyhookfn = nullptr;
@@ -202,8 +197,6 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         Log::logger->log(Log::ERR, "onKeyEvent found at {} :: sig: {}, demangled: {}", f.address, f.signature, f.demangled);
       throw std::runtime_error("CKeybindManager::onKeyEvent not found");
     }
-    Log::logger->log(Log::ERR, "onKeyEvent found at {} :: sig: {}, demangled: {}", keyhooklookup[0].address, keyhooklookup[0].signature,
-                     keyhooklookup[0].demangled);
     keyhookfn = HyprlandAPI::createFunctionHook(PHANDLE, keyhooklookup[0].address, (void *)onKeyEvent);
     if (!keyhookfn->hook())
       throw std::runtime_error("Failed to hook CKeybindManager::onKeyEvent");

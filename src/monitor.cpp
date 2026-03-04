@@ -1,4 +1,5 @@
 #include "monitor.hpp"
+#include "defines.hpp"
 #include <src/Compositor.hpp>
 #include <src/desktop/state/FocusState.hpp>
 #include <src/desktop/view/Window.hpp>
@@ -100,87 +101,75 @@ void Monitor::next() {
 void Monitor::prev() {
   select(activeWindow - 1);
 }
-void Monitor::update(float delta, const bool active = false) {
-  LOG_SCOPE(Log::ERR)
-  rotation.tick(delta, ROTATIONSPEED);
-  zoom.set(active ? 1.0f : 0.0f, false);
-  zoom.tick(delta, MONITORANIMATIONSPEED);
-  alpha.set(active ? 1.0f : 0.0f, false);
-  alpha.tick(delta, MONITORANIMATIONSPEED);
-  bool damaged = (!rotation.done() || !zoom.done() || !alpha.done());
-  Overlay->add(std::format("Monitor::update, damaged: {}, active: {}, rotation.done: {}, zoom.done: {}, alpha.done: {}", damaged, active, rotation.done(), zoom.done(), alpha.done()));
 
-  const auto MONITOR = Desktop::focusState()->monitor();
-  Vector2D cardSize = (MONITOR->m_size * MONITOR->m_scale) * WINDOWSIZE;
-  int snapshotsThisFrame = 0;
-  const int MAX_SNAPSHOTS_PER_FRAME = 3;
-  for (auto &w : windows) {
-    w->requestFrame(monitor);
-    if (!w->ready && snapshotsThisFrame < MAX_SNAPSHOTS_PER_FRAME) {
-      damaged |= w->snapshot(cardSize);
-      snapshotsThisFrame++;
-    }
-  }
-  animating = damaged;
+bool Monitor::animate(const float delta, const bool active) {
+  zoom.set(active ? 1.0f : 0.0f, false);
+  alpha.set(active ? 1.0f : 0.0f, false);
+  rotation.tick(delta, ROTATIONSPEED);
+  zoom.tick(delta, MONITORANIMATIONSPEED);
+  alpha.tick(delta, MONITORANIMATIONSPEED);
+  return !rotation.done() || !zoom.done() || !alpha.done();
 }
 
-void Monitor::draw(const CRegion &damage, const float &offset = 0.0f, const bool active = false) {
-  LOG(ERR, "dim: {}, dimamount: {}, blur: {}", DIMENABLED, DIMAMOUNT, BLURBG);
+void Monitor::update(const float delta, const bool active) {
+  const auto MONITOR = Desktop::focusState()->monitor();
+  const Vector2D mSize = MONITOR->m_size * MONITOR->m_scale;
 
-  CRegion dmg;
-  const int count = windows.size();
-  if (count == 0)
-    return;
+  bool damage = animate(delta, active);
 
-  struct RenderTask {
-    WindowCard *card;
-    CardData data;
-  };
-  std::vector<RenderTask> tasks;
+  renderTasks.clear();
+  for (int i = 0; i < windows.size(); ++i) {
+    auto data = getCardBox(i, 0.0f);
 
-  // Alphablend the cards
-  static float agressiveness = 1.0f;
-  static float minAlpha = UNFOCUSEDALPHA * agressiveness;
-  static float zoneWidth = 1.25f * agressiveness;
-  for (int i = 0; i < count; ++i) {
-    auto data = getCardBox(i, offset, active);
-    float angle = ((2.0f * M_PI * i) / count) + rotation.current;
-    float z = std::sin(angle);
+    const auto padding = 4;
+    const auto barHeight = (FONTSIZE + padding) * data.scale;
+    double pX1 = data.box.x, pY1 = data.box.y + barHeight;
+    double pW = data.box.width, pH = data.box.height - barHeight;
 
-    float normAngle = fmod(angle, 2.0f * M_PI);
-    if (normAngle < 0)
-      normAngle += 2.0f * M_PI;
-    float dist = std::abs(normAngle - (M_PI / 2.0f));
-    if (dist > M_PI)
-      dist = (2.0f * M_PI) - dist;
+    double interW = std::max(0.0, std::min(mSize.x, pX1 + pW) - std::max(0.0, pX1));
+    double interH = std::max(0.0, std::min(mSize.y, pY1 + pH) - std::max(0.0, pY1));
+    float visibility = (pW * pH > 0) ? (float)((interW * interH) / (pW * pH)) : 0.0f;
 
-    float alphaWeight = std::max(0.0f, (float)(1.0f - (dist / (M_PI / zoneWidth))));
-    float smoothAlpha = std::pow(alphaWeight, 2.0f);
-
-    float baseline = std::lerp(0.0f, minAlpha, alpha.current);
-    float backAlpha = baseline + (z + 1.0f) * 0.2f;
-    float localAlpha = std::lerp(backAlpha, 1.0f, smoothAlpha);
-    float rowVisibility = std::lerp(0.5f, 1.0f, alpha.current);
-    float finalAlpha = localAlpha * rowVisibility;
-
-    float exaggeratedZ = z + (smoothAlpha * 0.1f);
-    data.alpha = std::clamp(finalAlpha, 0.0f, 1.0f);
-    data.z = exaggeratedZ;
-    tasks.push_back({windows[i].get(), data});
+    renderTasks.emplace_back(RenderTask{windows[i].get(), data, visibility, FloatTime(NOW - windows[i]->lastSnapshot).count()});
   }
-  std::sort(tasks.begin(), tasks.end(), [](const auto &a, const auto &b) {
-    float weightA = a.data.z + (a.data.alpha * 0.01f);
-    float weightB = b.data.z + (b.data.alpha * 0.01f);
 
-    if (std::abs(weightA - weightB) < 0.0001f)
-      return a.card < b.card;
-    return weightA < weightB;
+  std::sort(renderTasks.begin(), renderTasks.end(), [](const RenderTask &a, const RenderTask &b) {
+    return a.since > b.since;
   });
 
-  for (const auto &task : tasks) {
-    CRegion cardDmg = task.data.box;
-    task.card->draw(task.data.box, task.data.scale, task.data.alpha);
-    dmg.add(cardDmg);
+  int snapshotsDone = 0;
+
+  for (auto &task : renderTasks) {
+    // Only update if it's actually visible enough to care
+    if (task.visibility > 0.10f) {
+      if (!task.card->ready || task.since > 0.5f) {
+        if (snapshotsDone < 2) {
+          task.card->requestFrame(MONITOR);
+          task.card->snapshot(mSize * WINDOWSIZE);
+          snapshotsDone++;
+          damage = true;
+        }
+      }
+    }
+  }
+
+  animating = damage;
+}
+
+void Monitor::draw(const CRegion &damage, const float &offset, const bool active) {
+  if (renderTasks.empty())
+    return;
+
+  std::sort(renderTasks.begin(), renderTasks.end(), [](const auto &a, const auto &b) {
+    return a.data.z < b.data.z;
+  });
+
+  CRegion dmg;
+  for (const auto &task : renderTasks) {
+    auto box = task.data.box;
+    box.translate({0.0f, offset});
+    task.card->draw(box, task.data.scale, task.data.alpha);
+    dmg.add(box);
   }
 #ifndef NDEBUG
   if (!dmg.empty())
@@ -188,76 +177,56 @@ void Monitor::draw(const CRegion &damage, const float &offset = 0.0f, const bool
 #endif
 }
 
-Monitor::CardData Monitor::getCardBox(int index, const float &offset = 0.0f, const bool active = false) {
-  if (index < 0 || index >= (int)windows.size())
+Monitor::CardData Monitor::getCardBox(int index, const float &offset) {
+  const int count = windows.size();
+  if (index < 0 || index >= count)
     return {};
 
-  const auto w = windows[index]->window;
-  if (!w)
-    return {};
-
-  auto surface = w->wlSurface()->getSurfaceBoxGlobal().value_or(CBox{0, 0, 0, 0}).size();
-  float aspect = (float)surface.x / std::max(1.0f, (float)surface.y);
-  if (aspect <= 0)
-    aspect = 1.77f;
-
-  // Creates weird offsets if not using the currently active monitor
   const auto MONITOR = Desktop::focusState()->monitor();
   const auto mSize = MONITOR->m_size * MONITOR->m_scale;
+  const Vector2D center = {mSize.x / 2.0f, (mSize.y / 2.0f) + offset};
 
-  const float maxHeight = mSize.y * WINDOWSIZE;
-  const float maxWidth = mSize.x * (WINDOWSIZE * 1.5);
-
-  Vector2D baseSize;
-  baseSize.y = maxHeight;
-  baseSize.x = baseSize.y * aspect;
-
-  if (baseSize.x > maxWidth) {
-    baseSize.x = maxWidth;
-    baseSize.y = baseSize.x / aspect;
-  }
-
-  const Vector2D center = {(mSize.x / 2.0f), (mSize.y / 2.0f) + offset};
-  const int count = windows.size();
-  // size of the spinnyboi
-  const float radius = (MONITOR->m_size.x * 0.5f) * CAROUSELSIZE;
-  const float stretchX = 1.4f;
-
-  // viewport position
   float baseAngle = ((2.0f * M_PI * index) / count) + rotation.current;
   float warpScale = WARP + (1.0f - WINDOWSIZEINACTIVE) * 0.2f;
   float angle = baseAngle - warpScale * std::sin(2.0f * baseAngle);
-  float z = std::sin(angle);
 
-  // clamp to [0, 2PI] so we don't spin out of control (even though it looks very funny)
   float normAngle = fmod(angle, 2.0f * M_PI);
   if (normAngle < 0)
     normAngle += 2.0f * M_PI;
-
   float dist = std::abs(normAngle - (M_PI / 2.0f));
   if (dist > M_PI)
     dist = (2.0f * M_PI) - dist;
 
-  // scale focused so it stands out abit
-  float focusWeight = std::max(0.0, (double)(1.0f - (dist / (M_PI / 2.0f))));
-  float focusFactor = std::pow(focusWeight, 2.5);
-  float targetZoom = std::lerp(1.0f, WINDOWSIZEACTIVE, focusFactor);
-  float depthFalloff = std::lerp(WINDOWSIZEINACTIVE, 1.0f, (z + 1.0f) / 2.0f);
-  float actualZoom = std::lerp(1.0f, targetZoom, zoom.current);
+  float z = std::sin(angle);
+  float focusWeight = std::pow(std::max(0.0f, (float)(1.0f - (dist / (M_PI / 2.0f)))), 2.5f);
+  float depthScale = std::lerp(WINDOWSIZEINACTIVE, 1.0f, (z + 1.0f) / 2.0f);
+  float scale = depthScale * std::lerp(1.0f, WINDOWSIZEACTIVE, focusWeight * zoom.current);
 
-  float s = depthFalloff * actualZoom;
-  s = std::max(s, 0.01f);
-  Vector2D size = baseSize * s;
+  auto surfaceSize = windows[index]->window->wlSurface()->getSurfaceBoxGlobal().value_or(CBox{0, 0, 0, 0}).size();
+  float aspect = (surfaceSize.y > 0) ? (float)surfaceSize.x / surfaceSize.y : 1.77f;
 
+  Vector2D size = {mSize.y * WINDOWSIZE * aspect * scale, mSize.y * WINDOWSIZE * scale};
+  if (size.x > mSize.x * WINDOWSIZE * 1.5f) {
+    size.x = mSize.x * WINDOWSIZE * 1.5f;
+    size.y = size.x / aspect;
+  }
+
+  float radius = (mSize.x * 0.5f) * CAROUSELSIZE;
   float radiusScale = radius * std::lerp(0.85f, 1.0f, (z + 1.0f) / 2.0f);
-  float tiltRadian = TILT * (M_PI / 180.0f);
-  float tiltOffset = radius * std::sin(tiltRadian);
+  float tiltOffset = radius * std::sin(TILT * (M_PI / 180.0f));
 
-  Vector2D pos;
-  pos.x = center.x + (radiusScale * stretchX) * std::cos(angle) - (size.x / 2.0f);
-  pos.y = (center.y - tiltOffset) - (z * -tiltOffset) - (size.y / 2.0f);
+  Vector2D pos = {
+      center.x + (radiusScale * 1.4f) * std::cos(angle) - (size.x / 2.0f),
+      (center.y - tiltOffset) - (z * -tiltOffset) - (size.y / 2.0f)};
 
-  return {.box = CBox{pos, size}, .scale = s};
+  float alphaWeight = std::pow(std::max(0.0f, (float)(1.0f - (dist / (M_PI / 1.25f)))), 2.0f);
+  float baseline = std::lerp(0.0f, UNFOCUSEDALPHA, alpha.current);
+  float finalAlpha = std::lerp(baseline + (z + 1.0f) * 0.2f, 1.0f, alphaWeight) * std::lerp(0.5f, 1.0f, alpha.current);
+
+  CBox box{pos, size};
+  bool isVisible = finalAlpha > 0.01f && box.overlaps({0, 0, mSize.x, mSize.y});
+
+  return {box, scale, std::clamp(finalAlpha, 0.0f, 1.0f), z + (alphaWeight * 0.1f), isVisible};
 }
 
 PHLWINDOW Monitor::select(int index) {

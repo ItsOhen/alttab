@@ -5,11 +5,20 @@
 class Monitor {
 private:
   struct CardData {
-    CBox box = {0, 0, 0, 0};
-    float z = 0.0f;
-    float alpha = 0.0f;
+    CBox box;
     float scale = 1.0f;
+    float alpha = 1.0f;
+    float z = 0.0f;
+    bool visible = false;
   };
+
+  struct RenderTask {
+    WindowCard *card;
+    CardData data;
+    float visibility = 0.0f;
+    float since = 0.0f;
+  };
+  std::vector<RenderTask> renderTasks;
 
 public:
   Monitor(PHLMONITOR monitor);
@@ -19,9 +28,10 @@ public:
   size_t removeWindow(PHLWINDOW window);
   void next();
   void prev();
-  void update(float delta, const bool active);
+  bool animate(const float delta, const bool active);
+  void update(const float delta, const bool active);
   void draw(const CRegion &damage, const float &offset, const bool active);
-  CardData getCardBox(int index, const float &offset, const bool active);
+  CardData getCardBox(int index, const float &offset);
   PHLWINDOW select(int card);
 
   bool animating = false;

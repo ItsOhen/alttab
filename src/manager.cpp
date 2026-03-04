@@ -67,6 +67,7 @@ void Manager::activate() {
     lastFrame = NOW;
     loopTimer->updateTimeout(std::chrono::milliseconds(16)); }, nullptr);
   g_pEventLoopManager->addTimer(loopTimer);
+  // g_pHyprRenderer->damageMonitor(Desktop::focusState()->monitor());
 }
 
 void Manager::deactivate() {
@@ -76,6 +77,7 @@ void Manager::deactivate() {
     g_pHyprRenderer->damageMonitor(mon->monitor);
   }
   loopTimer.reset();
+  monitors.clear();
 }
 
 void Manager::toggle() {
@@ -212,6 +214,7 @@ void Manager::onConfigReload() {
   SPLITMONITOR = *CConfigValue<Hyprlang::INT>("plugin:alttab:split_monitor");
   UNFOCUSEDALPHA = *CConfigValue<Hyprlang::FLOAT>("plugin:alttab:unfocused_alpha");
   POWERSAVE = *CConfigValue<Hyprlang::INT>("plugin:alttab:powersave");
+  BRINGTOACTIVE = *CConfigValue<Hyprlang::INT>("plugin:alttab:bring_to_active");
 }
 
 void Manager::onWindowCreated(PHLWINDOW window) {
@@ -243,10 +246,9 @@ void Manager::onRender(eRenderStage stage) {
   if (!active)
     return;
 
-  static bool redraw = false;
   switch (stage) {
   case eRenderStage::RENDER_PRE: {
-
+    ;
   } break;
   case eRenderStage::RENDER_LAST_MOMENT:
     g_pHyprRenderer->m_renderPass.add(makeUnique<RenderPass>());
@@ -260,6 +262,7 @@ void Manager::onFocusChange(PHLMONITOR monitor) {
   if (monitor == nullptr)
     return;
   activeMonitor = monitor->m_id;
+  monitorOffset.set(activeMonitor);
 }
 
 void Manager::rebuild() {

@@ -8,26 +8,41 @@
 #include <src/render/Renderer.hpp>
 
 WindowCard::WindowCard(PHLWINDOW window) : window(window) {
-  commit = window->wlSurface()->resource()->m_events.commit.listen([this] {
-    this->ready = false;
-    // this->lastCommit = NOW;
-    LOG(ERR, "In commit for: {}", this->window->m_title);
-  });
+  attachListeners(window->resource());
+  lastCommit = lastSnapshot = NOW;
 }
 
 WindowCard::~WindowCard() {
-  commit.reset();
+  commit.clear();
+}
+
+void WindowCard::attachListeners(SP<CWLSurfaceResource> surface) {
+  if (!surface)
+    return;
+
+  surface->breadthfirst([this](SP<CWLSurfaceResource> s, const Vector2D &offset, void *data) {
+    commit.push_back(s->m_events.commit.listen([this] {
+      const auto since = NOW - this->lastCommit;
+      if (FloatTime(since).count() > 0.0016) {
+        LOG(ERR, "In commit for: {}, since: {}", this->window->m_title, FloatTime(since).count());
+        this->ready = false;
+        this->lastCommit = NOW;
+      }
+    }));
+  },
+                        nullptr);
 }
 
 void WindowCard::requestFrame(PHLMONITOR monitor) {
-  const auto MONITOR = Desktop::focusState()->monitor();
-  const auto resource = window->wlSurface()->resource();
-  // resource->presentFeedback(NOW, MONITOR, false);
-  window->wlSurface()->resource()->frame(NOW);
-  auto FEEDBACK = makeUnique<CQueuedPresentationData>(window->wlSurface()->resource());
-  FEEDBACK->attachMonitor(MONITOR);
-  FEEDBACK->presented();
-  PROTO::presentation->queueData(std::move(FEEDBACK));
+  LOG(ERR, "{}: mapped: {}, ready: {}", window->m_title, window->resource()->m_mapped, ready);
+  if (!window->resource())
+    return;
+
+  window->resource()->breadthfirst([&](SP<CWLSurfaceResource> s, const Vector2D &offset, void *data) {
+    s->frame(NOW);
+    s->presentFeedback(NOW, monitor, false);
+  },
+                                   nullptr);
 }
 
 void WindowCard::draw(const CBox &box, const float scale, const float alpha = 1.0f) {
@@ -69,6 +84,7 @@ void WindowCard::draw(const CBox &box, const float scale, const float alpha = 1.
 }
 
 bool WindowCard::snapshot(const Vector2D &targetSize) {
+  LOG_SCOPE(Log::ERR);
   if (!window || !window->wlSurface() || !window->wlSurface()->resource()) {
     LOG(ERR, "No window or surface");
     return false;
@@ -80,6 +96,12 @@ bool WindowCard::snapshot(const Vector2D &targetSize) {
 
   if (targetSize.x <= 1 || targetSize.y <= 1)
     return false;
+
+  const auto resource = window->wlSurface()->resource();
+  if (!resource->m_current.updated.all && !firstSnapshot)
+    return false;
+  if (firstSnapshot)
+    firstSnapshot = false;
 
   const auto MONITOR = Desktop::focusState()->monitor();
   auto surfaceSize = window->wlSurface()->getSurfaceBoxGlobal().value_or({0, 0, 0, 0}).size();
@@ -101,14 +123,12 @@ bool WindowCard::snapshot(const Vector2D &targetSize) {
   }
 
   g_pHyprOpenGL->clear(CHyprColor{0, 0, 0, 1.0f});
-  g_pHyprRenderer->m_bBlockSurfaceFeedback = true;
 
   const double scale = std::min(fb.m_size.x / surfaceSize.x, fb.m_size.y / surfaceSize.y);
-  const auto resource = window->wlSurface()->resource();
+  g_pHyprRenderer->m_bBlockSurfaceFeedback = true;
   resource->breadthfirst([&](SP<CWLSurfaceResource> s, const Vector2D &offset, void *) {
     if (!s->m_current.texture)
       return;
-
     auto box = s->extends();
     box.scale(scale).translate(offset * scale);
     g_pHyprOpenGL->renderTexture(s->m_current.texture, box, {.a = 1.0f});
@@ -117,7 +137,7 @@ bool WindowCard::snapshot(const Vector2D &targetSize) {
 
   g_pHyprRenderer->m_bBlockSurfaceFeedback = false;
   g_pHyprRenderer->endRender();
-  lastCommit = NOW;
+  lastSnapshot = NOW;
   ready = true;
   return true;
 }
