@@ -47,6 +47,7 @@ In `hyprland.conf`, under `plugin { alttab { ... } }`:
 
 | Option                    | Type     | Default      | Description                                                                                        |
 | :------------------------ | :------- | :----------- | :------------------------------------------------------------------------------------------------- |
+| `style`               | string | `carousel`         | Style to use. carousel, grid, slide |
 | `font_size`               | int      | `24`         | Font size for window titles                                                                        |
 | `border_size`             | int      | `1`          | Border width                                                                                       |
 | `border_rounding`         | int      | `0`          | Corner rounding                                                                                    |

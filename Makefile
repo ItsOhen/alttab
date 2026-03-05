@@ -7,6 +7,8 @@ all: release
 release:
 	cmake -B $(BUILD_DIR) -S . -DCMAKE_BUILD_TYPE=Release
 	cmake --build $(BUILD_DIR) -j$(CORES)
+#Shitty hyprpm..
+	cp build/$(TARGET).so .
 debug:
 	cmake -B $(BUILD_DIR) -S . -DCMAKE_BUILD_TYPE=Debug
 	cmake --build $(BUILD_DIR) -j$(CORES)

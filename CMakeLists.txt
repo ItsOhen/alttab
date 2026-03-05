@@ -7,11 +7,10 @@ get_filename_component(PROJECT_NAME_FROM_DIR
 
 set(PROJECT_AUTHOR "Ergon")
 
-project(${PROJECT_NAME_FROM_DIR}
+project(alttab
     DESCRIPTION "Alttab carousel preview thing"
-    VERSION 0.3.0
+    VERSION 0.3.1
 )
-
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)

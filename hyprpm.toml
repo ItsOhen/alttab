@@ -1,0 +1,8 @@
+[repository]
+name = "Ergons_shitty_plugins"
+authors = ["Ergon"]
+[alttab]
+description = "Alttab for hyprland"
+authors = ["Ergon"]
+output = "alttab.so"
+build = ["make release"]
