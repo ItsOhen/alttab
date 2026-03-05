@@ -9,7 +9,7 @@ set(PROJECT_AUTHOR "Ergon")
 
 project(alttab
     DESCRIPTION "Alttab carousel preview thing"
-    VERSION 0.3.1
+    VERSION 0.3.2
 )
 
 set(CMAKE_CXX_STANDARD 23)
