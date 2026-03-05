@@ -128,8 +128,11 @@ RenderData Slide::calculate(const StyleContext &ctx, const Vector2D &surfaceSize
   const float aspect = (surfaceSize.y > 0) ? surfaceSize.x / surfaceSize.y : 1.77f;
   const float activeH = ctx.mSize.y * Config::windowSizeActive * Config::windowSize;
   const float inactiveH = activeH * Config::windowSizeInactive;
-  const float focusWeight = (ctx.index == ctx.activeIndex) ? 1.0f : 0.0f;
-  const float h = std::lerp(inactiveH, activeH, focusWeight * ctx.scale);
+  const float stripLoc = (ctx.rotation - (M_PI / 2.0f)) / (2.0f * M_PI) * ctx.count;
+  const float dist = std::abs((float)ctx.index - stripLoc);
+  const float focusWeight = std::pow(std::max(0.0f, 1.0f - dist), 2.5f);
+  const float scale = std::lerp(1.0f, Config::windowSizeActive, focusWeight * ctx.scale);
+  const float h = inactiveH * scale;
   const Vector2D size = {h * aspect, h};
 
   float stripIndex = (ctx.rotation - (M_PI / 2.0f)) / (2.0f * M_PI) * ctx.count;
