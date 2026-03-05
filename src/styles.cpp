@@ -60,34 +60,31 @@ MoveResult Carousel::onMove(Direction dir, const size_t index, const size_t coun
 
 RenderData Grid::calculate(const StyleContext &ctx, const Vector2D &surfaceSize) const {
   const int rows = (ctx.count + cols - 1) / cols;
+  const int curRow = ctx.index / cols;
+  const int curCol = ctx.index % cols;
+  const float baseScale = std::min(ctx.mSize.x, ctx.mSize.y) * Config::windowSize;
+  const float focusWeight = (ctx.index == ctx.activeIndex) ? 1.0f : 0.0f;
+  const float scale = Config::windowSizeInactive * std::lerp(1.0f, Config::windowSizeActive, focusWeight * ctx.scale);
+  const float aspect = (surfaceSize.y > 0) ? surfaceSize.x / surfaceSize.y : 1.77f;
+  Vector2D size = {baseScale * aspect * scale, baseScale * scale};
 
-  const auto slotW = ctx.mSize.x / cols;
-  const auto slotH = ctx.mSize.y / rows;
-  const auto aspect = (surfaceSize.y > 0) ? surfaceSize.x / surfaceSize.y : 1.77f;
-  const auto scale = (ctx.index == ctx.activeIndex) ? Config::windowSizeActive : Config::windowSizeInactive;
+  const Vector2D cSize = {ctx.mSize.x / cols, ctx.mSize.y / rows};
+  const Vector2D cCenter = {
+      cSize.x * curCol + cSize.x / 2.0f,
+      cSize.y * curRow + cSize.y / 2.0f + ctx.offset.y};
 
-  float w = slotW;
-  float h = w / aspect;
+  const Vector2D pos = cCenter - (size / 2.0f);
 
-  if (h > slotH) {
-    h = slotH;
-    w = h * aspect;
-  }
-
-  const float x = (ctx.index % cols) * slotW + (slotW - w) / 2.0f;
-  const float y = (int)(ctx.index / cols) * slotH + (slotH - h) / 2.0f + ctx.offset.y;
-
-  Vector2D pos = {
-      std::clamp(x, 0.0f, (float)ctx.mSize.x - w),
-      std::clamp(y, 0.0f, (float)std::max(ctx.mSize.y, (float)rows * slotH) - h)};
+  const float finalAlpha = std::lerp(Config::unfocusedAlpha, 1.0f, focusWeight) * ctx.alpha;
+  const CBox box{pos, size};
 
   return {
-      .visible = true,
-      .z = (ctx.index == ctx.activeIndex) ? 1.0f : 0.0f,
+      .visible = finalAlpha > 0.01f,
+      .z = focusWeight, // Focused window stays on top
       .rotation = 0.0f,
-      .scale = ctx.scale * scale,
-      .alpha = ctx.alpha,
-      .position = CBox{pos, {w, h}}};
+      .scale = scale,
+      .alpha = std::clamp(finalAlpha, 0.0f, 1.0f),
+      .position = box};
 }
 
 MoveResult Grid::onMove(Direction dir, const size_t index, const size_t count) {

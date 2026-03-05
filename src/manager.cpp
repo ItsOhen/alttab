@@ -163,8 +163,11 @@ void Manager::move(Direction dir) {
     mon->activeWindow = res.index.value();
     mon->activeChanged();
   } else if (res.changeMonitor) {
-    int step = (dir == Direction::UP) ? 1 : -1;
-    activeMonitor = (activeMonitor + step + monitors.size()) % monitors.size();
+    int step = (dir == Direction::DOWN) ? 1 : -1;
+    auto target = (activeMonitor + step + monitors.size()) % monitors.size();
+    if (!monitors.contains(target))
+      return;
+    activeMonitor = target;
     monitorOffset.set(activeMonitor, false);
   }
 
@@ -179,6 +182,9 @@ void Manager::draw(MONITORID monid, const CRegion &damage) {
     return;
   const auto cur = Desktop::focusState()->monitor();
   auto dmg = damage;
+
+  if (!monitors.contains(monid))
+    return;
 
   if (!Config::powersave) {
     g_pHyprOpenGL->renderRect(dmg.getExtents(), CHyprColor(0.0, 0.0, 0.0, (Config::dimEnabled) ? Config::dimAmount : 0), {.blur = sc<bool>(Config::blurBG)});

@@ -48,6 +48,11 @@ void WindowCard::requestFrame(PHLMONITOR monitor) {
 
 void WindowCard::draw(const CBox &box, const float scale, const float alpha = 1.0f) {
   LOG_SCOPE();
+  if (!window)
+    return;
+  // whoops, almost went to infinity with low scales.
+  if (box.width <= 1.0f || box.height <= 1.0f)
+    return;
 
   contentBox = box;
   contentBox.round();

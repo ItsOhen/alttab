@@ -99,8 +99,8 @@ size_t Monitor::removeWindow(PHLWINDOW window) {
 
 bool Monitor::animate(const float delta) {
   const auto active = isActive();
-  zoom.set(active ? 1.0f : 0.0f, false);
-  alpha.set(active ? 1.0f : 0.0f, false);
+  zoom.set(active ? 1.0f : 0.1f, false);
+  alpha.set(active ? 1.0f : 0.1f, false);
   rotation.tick(delta, Config::rotationSpeed);
   zoom.tick(delta, Config::monitorAnimationSpeed);
   alpha.tick(delta, Config::monitorAnimationSpeed);
@@ -156,6 +156,9 @@ void Monitor::update(const float delta) {
 }
 
 void Monitor::draw(const CRegion &damage, const float &offset, const float alpha = 1.0f) {
+  if (!monitor)
+    return;
+
   if (renderTasks.empty())
     return;
 
