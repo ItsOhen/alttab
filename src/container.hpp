@@ -7,6 +7,7 @@
 #include <hyprutils/signal/Listener.hpp>
 #include <src/config/ConfigDataValues.hpp>
 #include <src/helpers/time/Time.hpp>
+#include <src/protocols/core/Compositor.hpp>
 #define private public
 #include <src/render/Framebuffer.hpp>
 #undef private

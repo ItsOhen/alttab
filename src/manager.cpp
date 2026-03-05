@@ -26,6 +26,16 @@ static int lastCounter = 0;
 
 Manager::Manager() {
   LOG_SCOPE()
+
+#ifdef HYPRLAND_LEGACY
+  listeners.config = HyprlandAPI::registerCallbackDynamic(PHANDLE, "configReloaded", [this](void *self, SCallbackInfo &info, std::any data) { onConfigReload(); });
+  listeners.windowCreated = HyprlandAPI::registerCallbackDynamic(PHANDLE, "openWindow", [this](void *self, SCallbackInfo &info, std::any data) { onWindowCreated(std::any_cast<PHLWINDOW>(data)); });
+  listeners.windowDestroyed = HyprlandAPI::registerCallbackDynamic(PHANDLE, "closeWindow", [this](void *self, SCallbackInfo &info, std::any data) { onWindowDestroyed(std::any_cast<PHLWINDOW>(data)); });
+  listeners.render = HyprlandAPI::registerCallbackDynamic(PHANDLE, "render", [this](void *self, SCallbackInfo &info, std::any data) { onRender(std::any_cast<eRenderStage>(data)); });
+  listeners.focusChange = HyprlandAPI::registerCallbackDynamic(PHANDLE, "monitorFocusChange", [this](void *self, SCallbackInfo &info, std::any data) { onFocusChange(std::any_cast<PHLMONITOR>(data)); });
+  listeners.monitorAdded = HyprlandAPI::registerCallbackDynamic(PHANDLE, "monitorAdded", [this](void *self, SCallbackInfo &info, std::any data) { rebuild(); });
+  listeners.monitorRemoved = HyprlandAPI::registerCallbackDynamic(PHANDLE, "monitorRemoved", [this](void *self, SCallbackInfo &info, std::any data) { rebuild(); });
+#else
   listeners.config = HOOK_EVENT(config.reloaded, [this]() {
     onConfigReload();
   });
@@ -47,6 +57,7 @@ Manager::Manager() {
   listeners.monitorRemoved = HOOK_EVENT(monitor.removed, [this](auto m) {
     rebuild();
   });
+#endif
 
   lastFrame = lastUpdate = NOW;
 }
@@ -124,7 +135,11 @@ void Manager::confirm() {
     } else {
       lastWindow = Desktop::focusState()->window();
     }
+#ifdef HYPRLAND_LEGACY
+    Derived::focusState()->fullWindowFocus(lastWindow.lock());
+#else
     Desktop::focusState()->fullWindowFocus(lastWindow.lock(), Desktop::FOCUS_REASON_KEYBIND);
+#endif
     deactivate();
     return;
   }

@@ -2,11 +2,15 @@
 #include "logger.hpp"
 #include <src/config/ConfigDataValues.hpp>
 #include <src/desktop/DesktopTypes.hpp>
-#include <src/event/EventBus.hpp>
 #include <src/helpers/Color.hpp>
 #include <src/plugins/PluginAPI.hpp>
 
+#ifdef HYPRLAND_LEGACY
+#include <src/plugins/HookSystem.hpp>
+#else
+#include <src/event/EventBus.hpp>
 #define HOOK_EVENT(PATH, LAMBDA) Event::bus()->m_events.PATH.listen(LAMBDA);
+#endif
 
 inline HANDLE PHANDLE = nullptr;
 

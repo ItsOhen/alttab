@@ -36,6 +36,17 @@ private:
 
   bool setLayout();
 
+#ifdef HYPRLAND_LEGACY
+  struct {
+    SP<HOOK_CALLBACK_FN> config;
+    SP<HOOK_CALLBACK_FN> windowCreated;
+    SP<HOOK_CALLBACK_FN> windowDestroyed;
+    SP<HOOK_CALLBACK_FN> render;
+    SP<HOOK_CALLBACK_FN> focusChange;
+    SP<HOOK_CALLBACK_FN> monitorAdded;
+    SP<HOOK_CALLBACK_FN> monitorRemoved;
+  } listeners;
+#else
   struct {
     CHyprSignalListener config;
     CHyprSignalListener windowCreated;
@@ -45,6 +56,7 @@ private:
     CHyprSignalListener monitorAdded;
     CHyprSignalListener monitorRemoved;
   } listeners;
+#endif
 
   SP<CEventLoopTimer> loopTimer;
   SP<CEventLoopTimer> graceTimer;
