@@ -30,6 +30,7 @@ public:
   Timestamp lastCommit, lastSnapshot;
   float z = 0.0f;
   bool isActive = false;
+  bool firstSnapshot = true;
 
 private:
   CBox contentBox;
@@ -39,5 +40,4 @@ private:
   SP<CTexture> titleTexture;
   double lastWidth = 0;
   std::vector<CHyprSignalListener> commit;
-  bool firstSnapshot = true;
 };

@@ -3,3 +3,4 @@ build
 compile_commands.json
 /hl.conf
 /alttab.so
+/Session.vim

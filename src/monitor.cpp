@@ -112,67 +112,82 @@ void Monitor::update(const float delta) {
   const Vector2D mSize = MONITOR->m_size * MONITOR->m_scale;
 
   bool damage = animate(delta);
-
   renderTasks.clear();
+
   for (size_t i = 0; i < windows.size(); ++i) {
     auto ctx = StyleContext{i, windows.size(), activeWindow, rotation.current, zoom.current, alpha.current, mSize, {0, 0}};
     auto surfaceSize = windows[i]->window->wlSurface()->getSurfaceBoxGlobal().value_or(CBox{0, 0, 0, 0}).size();
     auto data = manager->layoutStyle->calculate(ctx, surfaceSize);
-
-    // TODO: get rid of this and do proper depth and clip
-    const auto padding = 4;
-    const auto barHeight = (Config::fontSize + padding) * data.scale;
-    double pX1 = data.position.x, pY1 = data.position.y + barHeight;
-    double pW = data.position.width, pH = data.position.height - barHeight;
-
-    double interW = std::max(0.0, std::min(mSize.x, pX1 + pW) - std::max(0.0, pX1));
-    double interH = std::max(0.0, std::min(mSize.y, pY1 + pH) - std::max(0.0, pY1));
-    float visibility = (pW * pH > 0) ? (float)((interW * interH) / (pW * pH)) : 0.0f;
-
-    renderTasks.emplace_back(RenderTask{windows[i].get(), data, visibility, FloatTime(NOW - windows[i]->lastSnapshot).count()});
+    if (!data.visible)
+      continue;
+    renderTasks.emplace_back(RenderTask{windows[i].get(), data, 0.0f, FloatTime(NOW - windows[i]->lastSnapshot).count()});
   }
 
-  std::vector<RenderTask *> snapshotRR;
-  for (auto &t : renderTasks)
-    snapshotRR.emplace_back(&t);
+  std::sort(renderTasks.begin(), renderTasks.end(), [](const auto &a, const auto &b) {
+    return a.data.z > b.data.z;
+  });
 
-  std::sort(snapshotRR.begin(), snapshotRR.end(), [](const RenderTask *a, const RenderTask *b) {
+  CRegion usedArea;
+  std::vector<RenderTask *> snapshotRR;
+
+  for (auto &task : renderTasks) {
+    CRegion visible = CRegion(task.data.position).subtract(usedArea);
+    if (visible.empty())
+      continue;
+    double area = 0;
+    visible.forEachRect([&area](const pixman_box32_t &r) {
+      area += (double)(r.x2 - r.x1) * (r.y2 - r.y1);
+    });
+
+    task.visibility = std::clamp((float)(area / (task.data.position.width * task.data.position.height)), 0.0f, 1.0f);
+    if ((task.visibility > 0.20f || task.card->firstSnapshot) && (!task.card->ready || task.since > 0.5f)) {
+      snapshotRR.emplace_back(&task);
+    }
+    usedArea.add(task.data.position);
+  }
+
+  std::sort(snapshotRR.begin(), snapshotRR.end(), [this](const RenderTask *a, const RenderTask *b) {
+    if (a->card->window == windows[activeWindow]->window)
+      return true;
+    if (b->card->window == windows[activeWindow]->window)
+      return false;
     return a->since > b->since;
   });
 
   int snapshotsDone = 0;
-  for (auto task : snapshotRR) {
-    if (task->visibility > 0.10f && (!task->card->ready || task->since > 0.5f)) {
-      if (snapshotsDone < 2) {
-        task->card->requestFrame(MONITOR);
-        task->card->snapshot(mSize * Config::windowSize);
-        snapshotsDone++;
-        damage = true;
-      }
-    }
+  for (auto *task : snapshotRR) {
+    if (snapshotsDone >= 2)
+      break;
+
+    task->card->requestFrame(MONITOR);
+    task->card->snapshot(mSize * Config::windowSize);
+    snapshotsDone++;
+    damage = true;
   }
 
   animating = damage;
 }
 
 void Monitor::draw(const CRegion &damage, const float &offset, const float alpha = 1.0f) {
-  if (!monitor)
+  if (!monitor || renderTasks.empty())
     return;
-
-  if (renderTasks.empty())
-    return;
-
-  // Sorting by Z is fine here; it only affects the painter's algorithm order
-  std::sort(renderTasks.begin(), renderTasks.end(), [](const auto &a, const auto &b) {
-    return a.data.z < b.data.z;
-  });
 
   auto dmg = damage;
-  for (const auto &task : renderTasks) {
-    auto box = task.data.position;
-    box.translate({0.0f, offset});
-    dmg = dmg.intersect(box);
-    task.card->draw(box, task.data.scale, std::min(task.data.alpha, alpha));
+  for (auto taskIt = renderTasks.rbegin(); taskIt != renderTasks.rend(); ++taskIt) {
+    auto &task = *taskIt;
+    task.data.position.translate({0.0f, offset});
+    dmg = dmg.intersect(task.data.position);
+    task.card->draw(task.data.position, task.data.scale, std::min(task.data.alpha, alpha));
+    // i really should make a function for this..
+#ifndef NDEBUG
+    auto text = g_pHyprOpenGL->renderText(std::format("Visibility: {:.2f} - Z: {:.2f}", task.visibility, task.data.z), CHyprColor(1.0, 1.0, 1.0, 1.0), 24);
+    auto windowBox = task.data.position;
+    Vector2D textPos = {
+        task.data.position.x + (task.data.position.width / 2.0f) - (text->m_size.x / 2.0f),
+        task.data.position.y + (task.data.position.height / 2.0f) - (text->m_size.y / 2.0f),
+    };
+    g_pHyprOpenGL->renderTexture(text, {textPos, text->m_size}, {.a = 1.0f});
+#endif
   }
 #ifndef NDEBUG
   if (!dmg.empty())
