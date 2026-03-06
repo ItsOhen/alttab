@@ -148,11 +148,13 @@ void Monitor::update(const float delta) {
     usedArea.add(task.data.position);
   }
 
-  std::sort(snapshotRR.begin(), snapshotRR.end(), [this](const RenderTask *a, const RenderTask *b) {
-    if (a->card->window == windows[activeWindow]->window)
-      return true;
-    if (b->card->window == windows[activeWindow]->window)
-      return false;
+  std::sort(snapshotRR.begin(), snapshotRR.end(), [](const RenderTask *a, const RenderTask *b) {
+    if (a->card->firstSnapshot != b->card->firstSnapshot)
+      return a->card->firstSnapshot;
+
+    if (a->card->z != b->card->z)
+      return a->card->z > b->card->z;
+
     return a->since > b->since;
   });
 
@@ -162,9 +164,13 @@ void Monitor::update(const float delta) {
       break;
 
     task->card->requestFrame(MONITOR);
-    task->card->snapshot(mSize * Config::windowSize);
-    snapshotsDone++;
-    damage = true;
+    bool updated = task->card->snapshot(mSize * Config::windowSize);
+    if (updated) {
+      snapshotsDone++;
+      damage = true;
+    } else if (!task->card->firstSnapshot) {
+      task->card->lastSnapshot = NOW;
+    }
   }
 
   animating = damage;
