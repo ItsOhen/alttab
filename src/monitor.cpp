@@ -178,16 +178,16 @@ void Monitor::draw(const CRegion &damage, const float &offset, const float alpha
   auto dmg = damage;
   for (auto taskIt = renderTasks.rbegin(); taskIt != renderTasks.rend(); ++taskIt) {
     auto &task = *taskIt;
-    task.data.position.translate({0.0f, offset});
-    dmg = dmg.intersect(task.data.position);
-    task.card->draw(task.data.position, task.data.scale, std::min(task.data.alpha, alpha));
+    auto box = task.data.position;
+    box.translate({0.0f, offset});
+    dmg = dmg.intersect(box);
+    task.card->draw(box, task.data.scale, std::min(task.data.alpha, alpha));
     // i really should make a function for this..
 #ifndef NDEBUG
     auto text = g_pHyprOpenGL->renderText(std::format("Visibility: {:.2f} - Z: {:.2f}", task.visibility, task.data.z), CHyprColor(1.0, 1.0, 1.0, 1.0), 24);
-    auto windowBox = task.data.position;
     Vector2D textPos = {
-        task.data.position.x + (task.data.position.width / 2.0f) - (text->m_size.x / 2.0f),
-        task.data.position.y + (task.data.position.height / 2.0f) - (text->m_size.y / 2.0f),
+        box.x + (box.width / 2.0f) - (text->m_size.x / 2.0f),
+        box.y + (box.height / 2.0f) - (text->m_size.y / 2.0f),
     };
     g_pHyprOpenGL->renderTexture(text, {textPos, text->m_size}, {.a = 1.0f});
 #endif
