@@ -92,6 +92,7 @@ bool Manager::setLayout() {
 }
 
 void Manager::init() {
+  graceExpired = true;
   activeMonitor = Desktop::focusState()->monitor()->m_id;
   monitorFade.set(1.0f, false);
   rebuild();
@@ -127,31 +128,36 @@ void Manager::toggle() {
 }
 
 void Manager::confirm() {
-  if (!monitors.contains(activeMonitor)) {
+  auto getFallbackWindow = [&]() -> PHLWINDOWREF {
     const auto history = Desktop::History::windowTracker()->fullHistory();
-    PHLWINDOWREF lastWindow;
-    if (history.size() >= 2) {
-      lastWindow = *(history | std::views::reverse | std::views::drop(1)).begin();
-    } else {
-      lastWindow = Desktop::focusState()->window();
-    }
+    if (history.size() >= 2)
+      return *(history | std::views::reverse | std::views::drop(1)).begin();
+    return Desktop::focusState()->window();
+  };
+
+  PHLWINDOWREF selected;
+  bool hasMonitor = monitors.contains(activeMonitor);
+
+  if (!hasMonitor || !monitors[activeMonitor] || monitors[activeMonitor]->windows.empty()) {
+    selected = getFallbackWindow();
+  } else if (graceExpired) {
+    const auto &mon = monitors[activeMonitor];
+    selected = mon->windows[mon->activeWindow]->window;
+  } else {
+    selected = getFallbackWindow();
+  }
+
+  if (selected) {
+    if (Config::bringToActive && selected->m_workspace)
+      g_pKeybindManager->m_dispatchers["focusworkspaceoncurrentmonitor"](selected->m_workspace->m_name);
+
 #ifdef HYPRLAND_LEGACY
-    Derived::focusState()->fullWindowFocus(lastWindow.lock());
+    Desktop::focusState()->fullWindowFocus(selected.lock());
 #else
-    Desktop::focusState()->fullWindowFocus(lastWindow.lock(), Desktop::FOCUS_REASON_KEYBIND);
+    Desktop::focusState()->fullWindowFocus(selected.lock(), Desktop::FOCUS_REASON_KEYBIND);
 #endif
-    deactivate();
-    return;
   }
-  const auto &mon = monitors[activeMonitor];
-  if (!mon || mon->windows.empty()) {
-    deactivate();
-    return;
-  }
-  auto selected = mon->windows[mon->activeWindow]->window;
-  if (Config::bringToActive)
-    g_pKeybindManager->m_dispatchers["focusworkspaceoncurrentmonitor"](selected->m_workspace->m_name);
-  Desktop::focusState()->fullWindowFocus(selected, Desktop::FOCUS_REASON_KEYBIND);
+
   deactivate();
 }
 
@@ -208,63 +214,49 @@ void Manager::move(Direction dir) {
 }
 
 void Manager::draw(MONITORID monid, const CRegion &damage) {
-  LOG_SCOPE()
-
-  // probably not inited from grace yet.
-  if (monitors.empty())
-    return;
   const auto cur = Desktop::focusState()->monitor();
-  auto dmg = damage;
-
-  if (!monitors.contains(monid) || !monitors[monid]->monitor)
+  if (monitors.empty() || !monitors.contains(monid) || !monitors[monid]->monitor)
     return;
-
-  if (!Config::powersave) {
-    g_pHyprOpenGL->renderRect(dmg.getExtents(), CHyprColor(0.0, 0.0, 0.0, (Config::dimEnabled) ? Config::dimAmount : 0), {.blur = sc<bool>(Config::blurBG)});
-  } else {
-    monitors[monid]->renderTexture(damage);
-  }
-
-  if (monid == cur->m_id) {
-#ifndef NDEBUG
-    Overlay->add(std::format("ActiveInternal: {}, ActiveInFocus: {}, monid: {}", activeMonitor, cur->m_name, monid));
-#endif
-
-    if (!Config::splitMonitor) {
-      monitors[monid]->draw(damage, 0, monitorFade.current);
-    } else {
-      const auto spacing = cur->m_size.y * Config::monitorSpacing;
-      int i = 0;
-      for (const auto &[id, mon] : monitors) {
-        if (id == activeMonitor) {
-          i++;
-          continue;
-        }
-
-        float offset = (i - monitorOffset.current) * spacing;
-        mon->draw(damage, offset, monitorFade.current);
-        i++;
-      }
-      int activeMon = 0;
-      int counter = 0;
-      for (const auto &[id, mon] : monitors) {
-        if (id == activeMonitor) {
-          activeMon = counter;
-          break;
-        }
-        counter++;
-      }
-      float activeOffset = (activeMon - monitorOffset.current) * spacing;
-      monitors[activeMonitor]->draw(damage, activeOffset, monitorFade.current);
-#ifndef NDEBUG
-      Overlay->add(std::format("monitor->m_size.x: {}, monitor->m_size.y: {}\nmonitor->m_pixelSize.x: {}, monitor->m_pixelSize.y: {}", monitors[activeMonitor]->monitor->m_size.x, monitors[activeMonitor]->monitor->m_size.y, monitors[activeMonitor]->monitor->m_size.x, monitors[activeMonitor]->monitor->m_size.y));
-#endif
-    }
-  }
+  renderBackground(monid, damage);
+  if (!Config::splitMonitor)
+    monitors[monid]->draw(damage, 0, monitorFade.current);
+  else if (monid == cur->m_id)
+    renderMonitors(damage, cur->m_size.y * Config::monitorSpacing);
 
 #ifndef NDEBUG
+  Overlay->add(std::format("ActiveID: {}, Offset: {:.2f}", activeMonitor, monitorOffset.current));
   Overlay->draw(cur);
 #endif
+}
+
+void Manager::renderBackground(MONITORID monid, const CRegion &damage) {
+  if (Config::powersave) {
+    monitors[monid]->renderTexture(damage);
+    return;
+  }
+  auto fakeDamage = damage;
+  g_pHyprOpenGL->renderRect(fakeDamage.getExtents(),
+                            CHyprColor(0.0, 0.0, 0.0, Config::dimEnabled ? Config::dimAmount : 0),
+                            {.blur = sc<bool>(Config::blurBG)});
+}
+
+void Manager::renderMonitors(const CRegion &damage, float spacing) {
+  std::vector<MonitorElement> stack;
+  int i = 0;
+  for (auto &[id, mon] : monitors) {
+    float off = (i - monitorOffset.current) * spacing;
+    float z = (id == activeMonitor) ? 1000.0f : -std::abs(off);
+    stack.push_back({mon.get(), off, z});
+    i++;
+  }
+
+  std::sort(stack.begin(), stack.end(), [](const auto &a, const auto &b) {
+    return a.z < b.z;
+  });
+
+  for (auto &el : stack) {
+    el.monitor->draw(damage, el.offset, monitorFade.current);
+  }
 }
 
 void Manager::onConfigReload() {
@@ -338,11 +330,14 @@ void Manager::rebuild() {
   PHLWINDOWREF activeWindow;
 
   const auto history = Desktop::History::windowTracker()->fullHistory();
+  /*
   if (history.size() >= 2) {
     activeWindow = *(history | std::views::reverse | std::views::drop(1)).begin();
   } else {
     activeWindow = Desktop::focusState()->window();
   }
+  */
+  activeWindow = Desktop::focusState()->window();
   activeMonitor = Desktop::focusState()->monitor()->m_id;
   monitorOffset.snap(activeMonitor);
 

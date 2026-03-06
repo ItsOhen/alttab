@@ -34,6 +34,14 @@ private:
   void onRender(eRenderStage stage);
   void onFocusChange(PHLMONITOR monitor);
 
+  struct MonitorElement {
+    Monitor *monitor;
+    float offset;
+    float z;
+  };
+  void renderBackground(MONITORID monid, const CRegion &damage);
+  void renderMonitors(const CRegion &damage, float spacing);
+
   bool setLayout();
 
 #ifdef HYPRLAND_LEGACY
@@ -67,6 +75,7 @@ private:
   AnimatedValue<float> monitorFade;
   Timestamp lastUpdate;
   SP<IStyle> layoutStyle;
+  bool graceExpired = false;
 
   friend class Monitor;
 };
