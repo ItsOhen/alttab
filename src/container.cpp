@@ -79,7 +79,7 @@ void WindowCard::draw(const CBox &box, const float scale, const float alpha = 1.
   drawBorder(alpha);
   auto texture = fb.getTexture();
   if (!texture) {
-    g_pHyprOpenGL->renderRect(previewBox, CHyprColor(0.0, 0.0, 0.0, 1.0 * alpha), {});
+    g_pHyprOpenGL->renderRect(previewBox, CHyprColor(0.0, 0.0, 0.0, 1.0), {});
   } else {
     if (!texture) {
       LOG(ERR, "texture: nullptr");

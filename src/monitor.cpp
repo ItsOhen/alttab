@@ -17,8 +17,8 @@ Monitor::Monitor(PHLMONITOR monitor) : monitor(monitor) {
   createTexture();
   rotation.snap(M_PI / 2.0f);
   if (isActive()) {
-    zoom.snap(1.0);
-    alpha.set(1.0f);
+    zoom.snap(1.0f);
+    alpha.snap(1.0f);
   } else {
     zoom.snap(0.1f);
     alpha.snap(0.1f);
@@ -167,7 +167,7 @@ void Monitor::update(const float delta) {
 
   int snapshotsDone = 0;
   for (auto *task : snapshotRR) {
-    if (snapshotsDone >= 2)
+    if (snapshotsDone >= 4)
       break;
 
     task->card->requestFrame(MONITOR);
