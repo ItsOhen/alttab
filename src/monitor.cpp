@@ -98,6 +98,7 @@ size_t Monitor::removeWindow(PHLWINDOW window) {
 }
 
 bool Monitor::animate(const float delta) {
+  LOG_SCOPE(Log::ERR)
   const auto active = isActive();
   zoom.set(active ? 1.0f : 0.1f, false);
   alpha.set(active ? 1.0f : 0.1f, false);
@@ -108,6 +109,7 @@ bool Monitor::animate(const float delta) {
 }
 
 void Monitor::update(const float delta) {
+  LOG_SCOPE(Log::ERR)
   const auto MONITOR = Desktop::focusState()->monitor();
   const Vector2D mSize = MONITOR->m_size * MONITOR->m_scale;
 
@@ -169,7 +171,8 @@ void Monitor::update(const float delta) {
 }
 
 void Monitor::draw(const CRegion &damage, const float &offset, const float alpha = 1.0f) {
-  if (!monitor || renderTasks.empty())
+  LOG_SCOPE(Log::ERR)
+  if (!monitor)
     return;
 
   auto dmg = damage;
@@ -196,14 +199,19 @@ void Monitor::draw(const CRegion &damage, const float &offset, const float alpha
 }
 
 void Monitor::activeChanged() {
+  LOG_SCOPE(Log::ERR)
   const int count = windows.size();
-  if (count <= 0)
+  if (count <= 0) {
+    LOG(ERR, "count <= 0");
     return;
+  }
+
+  LOG(ERR, "activeWindow1: {}, size: {}", activeWindow, count);
 
   for (auto i = 0; i < windows.size(); ++i) {
     windows[i]->isActive = (i == activeWindow);
   }
-
+  LOG(ERR, "activeWindow2: {}, size: {}", activeWindow, count);
   // Why am i doing this backwards??
   const auto target = (M_PI / 2) + (M_PI * 2.0f * activeWindow) / count;
   auto diff = target - rotation.target;
@@ -213,5 +221,6 @@ void Monitor::activeChanged() {
 }
 
 bool Monitor::isActive() const {
+  LOG_SCOPE(Log::ERR)
   return manager->activeMonitor == monitor->m_id;
 }

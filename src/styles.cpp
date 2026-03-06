@@ -53,9 +53,16 @@ RenderData Carousel::calculate(const StyleContext &ctx, const Vector2D &surfaceS
 MoveResult Carousel::onMove(Direction dir, const size_t index, const size_t count) {
   if (dir == Direction::UP || dir == Direction::DOWN)
     return {.changeMonitor = true};
-  int step = (dir == Direction::LEFT) ? -1 : 1;
-  // undef mod behavior?
-  return {.index = (size_t)((int)index + step + (int)count) % count};
+
+  if (count == 0)
+    return {.index = 0};
+
+  if (dir == Direction::LEFT) {
+    size_t nextIndex = (index == 0) ? count - 1 : index - 1;
+    return {.index = nextIndex};
+  } else {
+    return {.index = (index + 1) % count};
+  }
 }
 
 RenderData Grid::calculate(const StyleContext &ctx, const Vector2D &surfaceSize) const {
@@ -87,39 +94,39 @@ RenderData Grid::calculate(const StyleContext &ctx, const Vector2D &surfaceSize)
 }
 
 MoveResult Grid::onMove(Direction dir, const size_t index, const size_t count) {
+  if (count == 0)
+    return {.changeMonitor = true};
+
   const int rows = (count + cols - 1) / cols;
   int curRow = index / cols;
   int curCol = index % cols;
 
   switch (dir) {
   case Direction::UP:
-    curRow -= 1;
-    if (curRow < 0)
+    if (--curRow < 0)
       return {.changeMonitor = true};
     break;
   case Direction::DOWN:
-    curRow += 1;
-    if (curRow >= rows)
+    if (++curRow >= rows)
       return {.changeMonitor = true};
     break;
   case Direction::LEFT:
-    curCol -= 1;
-    if (curCol < 0)
+    if (--curCol < 0)
       curCol = cols - 1;
     break;
   case Direction::RIGHT:
-    curCol += 1;
-    if (curCol >= cols)
+    if (++curCol >= cols)
       curCol = 0;
-    break;
-  default:
     break;
   }
 
   int target = curRow * cols + curCol;
 
-  if (target >= (int)count)
-    target = (int)count - 1;
+  if (target >= count)
+    target = count - 1;
+
+  if ((size_t)target == index && (dir == Direction::UP || dir == Direction::DOWN))
+    return {.changeMonitor = true};
 
   return {.index = (size_t)target};
 }

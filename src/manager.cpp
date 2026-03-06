@@ -170,22 +170,38 @@ void Manager::update(float delta) {
 }
 
 void Manager::move(Direction dir) {
-  if (!monitors.contains(activeMonitor))
-    return;
+  LOG_SCOPE(Log::ERR)
 
-  auto &mon = monitors[activeMonitor];
+  auto it = monitors.find(activeMonitor);
+  if (it == monitors.end()) {
+    if (monitors.empty())
+      return;
+    it = monitors.begin();
+  }
+
+  auto &mon = it->second;
   const auto res = layoutStyle->onMove(dir, mon->activeWindow, mon->windows.size());
 
-  if (res.index.has_value()) {
+  if (res.index.has_value() && !mon->windows.empty()) {
     mon->activeWindow = res.index.value();
     mon->activeChanged();
   } else if (res.changeMonitor) {
-    int step = (dir == Direction::DOWN) ? 1 : -1;
-    auto target = (activeMonitor + step + monitors.size()) % monitors.size();
-    if (!monitors.contains(target))
+    if (monitors.size() < 2)
       return;
-    activeMonitor = target;
-    monitorOffset.set(activeMonitor, false);
+
+    if (dir == Direction::DOWN || dir == Direction::RIGHT) {
+      it++;
+      if (it == monitors.end())
+        it = monitors.begin();
+    } else {
+      if (it == monitors.begin())
+        it = std::prev(monitors.end());
+      else
+        it--;
+    }
+
+    activeMonitor = it->first;
+    monitorOffset.set(activeMonitor);
   }
 
   damageMonitors();
@@ -200,14 +216,13 @@ void Manager::draw(MONITORID monid, const CRegion &damage) {
   const auto cur = Desktop::focusState()->monitor();
   auto dmg = damage;
 
-  if (!monitors.contains(monid))
+  if (!monitors.contains(monid) || !monitors[monid]->monitor)
     return;
 
   if (!Config::powersave) {
     g_pHyprOpenGL->renderRect(dmg.getExtents(), CHyprColor(0.0, 0.0, 0.0, (Config::dimEnabled) ? Config::dimAmount : 0), {.blur = sc<bool>(Config::blurBG)});
   } else {
-    if (monitors.contains(monid))
-      monitors[monid]->renderTexture(damage);
+    monitors[monid]->renderTexture(damage);
   }
 
   if (monid == cur->m_id) {

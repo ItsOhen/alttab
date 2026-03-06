@@ -15,7 +15,6 @@
 inline HANDLE PHANDLE = nullptr;
 
 enum class Direction : uint8_t {
-  UNKNOWN,
   UP,
   DOWN,
   LEFT,
