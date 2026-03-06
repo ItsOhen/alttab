@@ -15,8 +15,15 @@
 
 Monitor::Monitor(PHLMONITOR monitor) : monitor(monitor) {
   createTexture();
-  activeWindow = 0;
   rotation.snap(M_PI / 2.0f);
+  if (isActive()) {
+    zoom.snap(1.0);
+    alpha.set(1.0f);
+  } else {
+    zoom.snap(0.1f);
+    alpha.snap(0.1f);
+  }
+
   animating = false;
 }
 void Monitor::createTexture() {

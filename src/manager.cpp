@@ -369,7 +369,7 @@ void Manager::rebuild() {
       }
     }
     */
-
+    // i reall should clean this up and make a setActive..
     for (const auto &w : monitorWindows) {
       auto card = mon->addWindow(w);
       if (w == activeWindow) {
@@ -377,6 +377,10 @@ void Manager::rebuild() {
         const int count = monitorWindows.size();
         const float angle = (M_PI / 2.0f) + ((2.0f * M_PI * mon->activeWindow) / count);
         mon->rotation.snap(angle);
+        mon->windows.back()->isActive = true;
+      } else if (w == mon->monitor->m_activeWorkspace->m_lastFocusedWindow) {
+        mon->activeWindow = mon->windows.size() - 1;
+        mon->windows.back()->isActive = true;
       }
     }
     g_pHyprRenderer->damageMonitor(mon->monitor);
