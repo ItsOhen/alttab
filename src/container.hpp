@@ -23,6 +23,8 @@ public:
   void drawTitle(const CBox &box, const float scale, const float alpha);
   void drawBorder(const float alpha);
   void attachListeners(SP<CWLSurfaceResource> surface);
+  void setPosition(const CBox &position);
+  CBox getPosition() const;
 
   PHLWINDOW window;
   CFramebuffer fb;
@@ -33,6 +35,7 @@ public:
   bool firstSnapshot = true;
 
 private:
+  CBox position;
   CBox contentBox;
   CBox titleBox;
   CBox previewBox;

@@ -33,6 +33,7 @@ private:
   void onWindowDestroyed(PHLWINDOW window);
   void onRender(eRenderStage stage);
   void onFocusChange(PHLMONITOR monitor);
+  void onMouseClick(const IPointer::SButtonEvent button);
 
   struct MonitorElement {
     Monitor *monitor;
@@ -40,7 +41,7 @@ private:
     float z;
   };
   void renderBackground(MONITORID monid, const CRegion &damage);
-  void renderMonitors(const CRegion &damage, float spacing);
+  void renderMonitors(const CRegion &damage);
 
   bool setLayout();
 
@@ -63,6 +64,7 @@ private:
     CHyprSignalListener focusChange;
     CHyprSignalListener monitorAdded;
     CHyprSignalListener monitorRemoved;
+    CHyprSignalListener mouseClick;
   } listeners;
 #endif
 
@@ -76,6 +78,7 @@ private:
   Timestamp lastUpdate;
   SP<IStyle> layoutStyle;
   bool graceExpired = false;
+  std::vector<MonitorElement> stack;
 
   friend class Monitor;
 };

@@ -52,6 +52,12 @@ else()
   target_compile_definitions(${PROJECT_NAME} PRIVATE HYPRLAND_LEGACY)
 endif()
 
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  if(LOG_FLAGS)
+    add_definitions(-DLOGTYPE=Log::${LOG_FLAGS})
+  endif()
+endif()
+
 if(ENABLE_PROTOCOLS)
   pkg_check_modules(hyprwire REQUIRED IMPORTED_TARGET hyprwire)
 endif()

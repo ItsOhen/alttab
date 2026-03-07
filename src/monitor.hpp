@@ -11,6 +11,8 @@ private:
     float visibility = 0.0f;
     float since = 0.0f;
   };
+
+protected:
   std::vector<RenderTask> renderTasks;
 
 public:
@@ -20,11 +22,12 @@ public:
   WP<WindowCard> addWindow(PHLWINDOW window);
   size_t removeWindow(PHLWINDOW window);
   bool animate(const float delta);
-  void update(const float delta);
-  void draw(const CRegion &damage, const float &offset, const float alpha);
+  void update(const float delta, const Vector2D &offset);
+  void draw(const CRegion &damage, const float alpha);
   void activeChanged();
   bool isActive() const;
 
+  CBox position;
   bool animating = false;
   AnimatedValue<float> rotation;
   AnimatedValue<float> zoom;
@@ -36,4 +39,6 @@ public:
   CFramebuffer bgFb, blurFb;
   size_t activeWindow = 0;
   std::vector<UP<WindowCard>> windows;
+
+  friend class Manager;
 };

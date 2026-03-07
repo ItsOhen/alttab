@@ -5,6 +5,26 @@
 #include <src/debug/log/Logger.hpp>
 #include <src/desktop/DesktopTypes.hpp>
 
+namespace Log {
+enum LogType : uint32_t {
+  NONE = 0,
+  DRAW = 1 << 0,
+  INPUT = 1 << 1,
+  SNAPSHOT = 1 << 2,
+  ANIMATE = 1 << 3,
+  UPDATE = 1 << 4,
+  MOVE = 1 << 5,
+  MOUSE = 1 << 6,
+  ALL = 0xFFFFFFFF
+};
+
+#ifdef LOGTYPE
+inline uint32_t enabledTypes = LOGTYPE;
+#else
+inline uint32_t enabledTypes = NONE;
+#endif
+} // namespace Log
+
 inline void makeTimestamp(char *buf, size_t len) {
   using namespace std::chrono;
 
@@ -28,20 +48,38 @@ inline void makeTimestamp(char *buf, size_t len) {
 class ScopeLogger {
 public:
   ScopeLogger(const char *fn,
-              Hyprutils::CLI::eLogLevel level = Log::TRACE)
-      : m_fn(fn), m_level(level),
-        m_start(std::chrono::steady_clock::now()) {
+              Log::LogType type = Log::LogType::NONE,
+              Hyprutils::CLI::eLogLevel level = Log::ERR)
+      : m_fn(fn), m_level(level), m_type(type) {
+
+    m_shouldLog = (m_type == Log::ALL) || (Log::enabledTypes & m_type);
+
+    if (!m_shouldLog)
+      return;
+
+    m_start = std::chrono::steady_clock::now();
 
     char timestamp[32];
     makeTimestamp(timestamp, sizeof(timestamp));
 
-    Log::logger->log(m_level,
-                     "[{}] [{}] > Enter {}",
-                     timestamp,
-                     PLUGIN_NAME,
-                     m_fn);
+    Log::logger->log(m_level, "[{}] [{}] > Enter {}", timestamp, PLUGIN_NAME, m_fn);
   }
 
+  ~ScopeLogger() {
+    if (!m_shouldLog)
+      return;
+
+    char timestamp[32];
+    makeTimestamp(timestamp, sizeof(timestamp));
+
+    auto duration = std::chrono::steady_clock::now() - m_start;
+    char durationBuf[32];
+    formatDuration(durationBuf, sizeof(durationBuf), duration);
+
+    Log::logger->log(m_level, "[{}] [{}] < Exit {} ({})", timestamp, PLUGIN_NAME, m_fn, durationBuf);
+  }
+
+private:
   static void formatDuration(char *buf,
                              size_t len,
                              std::chrono::steady_clock::duration duration) {
@@ -56,28 +94,12 @@ public:
       std::snprintf(buf, len, "%ldus", us);
   }
 
-  ~ScopeLogger() {
-    char timestamp[32];
-    makeTimestamp(timestamp, sizeof(timestamp));
-
-    auto duration =
-        std::chrono::steady_clock::now() - m_start;
-
-    char durationBuf[32];
-    formatDuration(durationBuf, sizeof(durationBuf), duration);
-
-    Log::logger->log(m_level,
-                     "[{}] [{}] < Exit {} ({})",
-                     timestamp,
-                     PLUGIN_NAME,
-                     m_fn,
-                     durationBuf);
-  }
-
 private:
   const char *m_fn;
   Hyprutils::CLI::eLogLevel m_level;
   std::chrono::steady_clock::time_point m_start;
+  Log::LogType m_type;
+  bool m_shouldLog = false;
 };
 
 class DebugText {
@@ -100,18 +122,20 @@ inline UP<DebugText> Overlay = makeUnique<DebugText>();
 #endif
 
 #ifndef NDEBUG
-#define LOG(LEVEL, FMT, ...)                                          \
-  do {                                                                \
-    char _ts[32];                                                     \
-    makeTimestamp(_ts, sizeof(_ts));                                  \
-    Log::logger->log(Log::LEVEL,                                      \
-                     "[{}] [{}] {}: " FMT,                            \
-                     _ts,                                             \
-                     PLUGIN_NAME,                                     \
-                     __PRETTY_FUNCTION__ __VA_OPT__(, ) __VA_ARGS__); \
+#define LOG(TYPE, FMT, ...)                                             \
+  do {                                                                  \
+    if ((TYPE == Log::ALL) || (Log::enabledTypes & (TYPE))) {           \
+      char _ts[32];                                                     \
+      makeTimestamp(_ts, sizeof(_ts));                                  \
+      Log::logger->log(Log::ERR,                                        \
+                       "[{}] [{}] {}: " FMT,                            \
+                       _ts,                                             \
+                       PLUGIN_NAME,                                     \
+                       __PRETTY_FUNCTION__ __VA_OPT__(, ) __VA_ARGS__); \
+    }                                                                   \
   } while (0)
 #else
-#define LOG(LEVEL, ...) \
-  do {                  \
+#define LOG(...) \
+  do {           \
   } while (0)
 #endif

@@ -10,6 +10,7 @@
 #include <src/helpers/Color.hpp>
 #include <src/helpers/Monitor.hpp>
 #include <src/managers/eventLoop/EventLoopManager.hpp>
+#include <src/managers/input/InputManager.hpp>
 #include <src/plugins/PluginAPI.hpp>
 #include <src/protocols/PresentationTime.hpp>
 #include <src/render/pass/RectPassElement.hpp>
@@ -56,6 +57,13 @@ Manager::Manager() {
   });
   listeners.monitorRemoved = HOOK_EVENT(monitor.removed, [this](auto m) {
     rebuild();
+  });
+  listeners.mouseClick = HOOK_EVENT(input.mouse.button, [this](auto button, auto &cbInfo) {
+    // cbInfo is only for .cancelled
+    if (this->active) {
+      cbInfo.cancelled = true;
+      onMouseClick(button);
+    }
   });
 #endif
 
@@ -119,7 +127,6 @@ void Manager::deactivate() {
 
 void Manager::toggle() {
   LOG_SCOPE()
-  LOG(ERR, "toggle");
   active = !active;
   if (active)
     activate();
@@ -162,21 +169,37 @@ void Manager::confirm() {
 }
 
 void Manager::update(float delta) {
-  LOG_SCOPE()
+  LOG_SCOPE(Log::UPDATE)
   const auto MONITOR = Desktop::focusState()->monitor();
+  const Vector2D monitorPos = MONITOR->m_position;
+
   monitorFade.tick(delta, 0.4);
   monitorOffset.tick(delta, Config::monitorAnimationSpeed);
-  for (const auto &[id, m] : monitors) {
-    m->update(delta);
-    if (m->animating || !monitorOffset.done()) {
-      // God i'm stupid sometimes. Ofc only damage the active monitor or animations will be fucked.
+
+  const float spacing = MONITOR->m_size.y * Config::monitorSpacing;
+
+  stack.clear();
+  int i = 0;
+  for (auto &[id, mon] : monitors) {
+    float off = (i - monitorOffset.current) * spacing;
+    mon->position = {monitorPos.x, monitorPos.y + off, MONITOR->m_size.x, MONITOR->m_size.y};
+    float z = (id == activeMonitor) ? 1000.0f : -std::abs(i - monitorOffset.current);
+    mon->update(delta, {monitorPos.x, monitorPos.y + off});
+
+    if (mon->animating || !monitorOffset.done()) {
       g_pHyprRenderer->damageMonitor(MONITOR);
     }
+    i++;
+    stack.push_back({.monitor = mon.get(), .offset = off, .z = z});
   }
+
+  std::sort(stack.begin(), stack.end(), [](const auto &a, const auto &b) {
+    return a.z < b.z;
+  });
 }
 
 void Manager::move(Direction dir) {
-  LOG_SCOPE(Log::ERR)
+  LOG_SCOPE(Log::MOVE)
 
   auto it = monitors.find(activeMonitor);
   if (it == monitors.end()) {
@@ -219,9 +242,9 @@ void Manager::draw(MONITORID monid, const CRegion &damage) {
     return;
   renderBackground(monid, damage);
   if (!Config::splitMonitor)
-    monitors[monid]->draw(damage, 0, monitorFade.current);
+    monitors[monid]->draw(damage, monitorFade.current);
   else if (monid == cur->m_id)
-    renderMonitors(damage, cur->m_size.y * Config::monitorSpacing);
+    renderMonitors(damage);
 
 #ifndef NDEBUG
   Overlay->add(std::format("ActiveID: {}, Offset: {:.2f}", activeMonitor, monitorOffset.current));
@@ -240,22 +263,9 @@ void Manager::renderBackground(MONITORID monid, const CRegion &damage) {
                             {.blur = sc<bool>(Config::blurBG)});
 }
 
-void Manager::renderMonitors(const CRegion &damage, float spacing) {
-  std::vector<MonitorElement> stack;
-  int i = 0;
-  for (auto &[id, mon] : monitors) {
-    float off = (i - monitorOffset.current) * spacing;
-    float z = (id == activeMonitor) ? 1000.0f : -std::abs(off);
-    stack.push_back({mon.get(), off, z});
-    i++;
-  }
-
-  std::sort(stack.begin(), stack.end(), [](const auto &a, const auto &b) {
-    return a.z < b.z;
-  });
-
+void Manager::renderMonitors(const CRegion &damage) {
   for (auto &el : stack) {
-    el.monitor->draw(damage, el.offset, monitorFade.current);
+    el.monitor->draw(damage, monitorFade.current);
   }
 }
 
@@ -315,6 +325,46 @@ void Manager::onFocusChange(PHLMONITOR monitor) {
     return;
   activeMonitor = monitor->m_id;
   monitorOffset.set(activeMonitor);
+}
+
+// Feels like indexing by size_t id's might have been a mistake at this point..
+void Manager::onMouseClick(const IPointer::SButtonEvent button) {
+  LOG_SCOPE(Log::MOUSE)
+  if (button.button != BTN_LEFT || button.state != WL_POINTER_BUTTON_STATE_PRESSED)
+    return;
+
+  const auto mousePos = g_pInputManager->getMouseCoordsInternal();
+  const auto MONITOR = Desktop::focusState()->monitor();
+
+  const Vector2D localMouse = (mousePos - MONITOR->m_position) * MONITOR->m_scale;
+
+  for (auto it = stack.begin(); it != stack.end(); ++it) {
+    auto *mon = it->monitor;
+
+    for (auto taskIt = mon->renderTasks.begin(); taskIt != mon->renderTasks.end(); ++taskIt) {
+      auto &task = *taskIt;
+
+      if (task.card->getPosition().containsPoint(localMouse)) {
+        const auto id = mon->monitor->m_id;
+        LOG(Log::MOUSE, "HIT! {} on Monitor ID: {}", task.card->window->m_title, id);
+        activeMonitor = id;
+        auto mapIt = monitors.find(id);
+        if (mapIt != monitors.end()) {
+          size_t idx = std::distance(monitors.begin(), mapIt);
+          monitorOffset.set((float)idx);
+        }
+
+        auto winIt = std::find_if(mon->windows.begin(), mon->windows.end(),
+                                  [&](const auto &wp) { return wp.get() == task.card; });
+
+        if (winIt != mon->windows.end()) {
+          mon->activeWindow = std::distance(mon->windows.begin(), winIt);
+          mon->activeChanged();
+        }
+        return;
+      }
+    }
+  }
 }
 
 void Manager::rebuild() {

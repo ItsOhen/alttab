@@ -1,5 +1,6 @@
 #include "monitor.hpp"
 #include "defines.hpp"
+#include "logger.hpp"
 #include "manager.hpp"
 #include <src/Compositor.hpp>
 #include <src/desktop/state/FocusState.hpp>
@@ -76,7 +77,7 @@ void Monitor::createTexture() {
 
 void Monitor::renderTexture(const CRegion &damage) {
   if (!blurred || !texture || !monitor) {
-    LOG(ERR, "FAILED: (!blurred || !texture || !monitor)");
+    LOG(Log::DRAW, "FAILED: (!blurred || !texture || !monitor)");
     return;
   }
 
@@ -105,7 +106,7 @@ size_t Monitor::removeWindow(PHLWINDOW window) {
 }
 
 bool Monitor::animate(const float delta) {
-  LOG_SCOPE(Log::ERR)
+  LOG_SCOPE(Log::ANIMATE)
   const auto active = isActive();
   zoom.set(active ? 1.0f : 0.1f, false);
   alpha.set(active ? 1.0f : 0.1f, false);
@@ -115,8 +116,8 @@ bool Monitor::animate(const float delta) {
   return !rotation.done() || !zoom.done() || !alpha.done();
 }
 
-void Monitor::update(const float delta) {
-  LOG_SCOPE(Log::ERR)
+void Monitor::update(const float delta, const Vector2D &offset) {
+  LOG_SCOPE(Log::UPDATE)
   const auto MONITOR = Desktop::focusState()->monitor();
   const Vector2D mSize = MONITOR->m_size * MONITOR->m_scale;
 
@@ -127,6 +128,9 @@ void Monitor::update(const float delta) {
     auto ctx = StyleContext{i, windows.size(), activeWindow, rotation.current, zoom.current, alpha.current, mSize, {0, 0}};
     auto surfaceSize = windows[i]->window->wlSurface()->getSurfaceBoxGlobal().value_or(CBox{0, 0, 0, 0}).size();
     auto data = manager->layoutStyle->calculate(ctx, surfaceSize);
+    auto pos = data.position;
+    pos.translate(offset);
+    windows[i]->setPosition(pos);
     if (!data.visible)
       continue;
     renderTasks.emplace_back(RenderTask{windows[i].get(), data, 0.0f, FloatTime(NOW - windows[i]->lastSnapshot).count()});
@@ -183,48 +187,35 @@ void Monitor::update(const float delta) {
   animating = damage;
 }
 
-void Monitor::draw(const CRegion &damage, const float &offset, const float alpha = 1.0f) {
-  LOG_SCOPE(Log::ERR)
-  if (!monitor)
-    return;
+void Monitor::draw(const CRegion &damage, const float alpha) {
+  const auto FOCUS = Desktop::focusState()->monitor();
+  const Vector2D renderOffset = FOCUS->m_position * FOCUS->m_scale;
 
-  auto dmg = damage;
   for (auto taskIt = renderTasks.rbegin(); taskIt != renderTasks.rend(); ++taskIt) {
     auto &task = *taskIt;
-    auto box = task.data.position;
-    box.translate({0.0f, offset});
-    dmg = dmg.intersect(box);
+    CBox box = task.card->getPosition();
+
+    box.x -= renderOffset.x;
+    box.y -= renderOffset.y;
+
     task.card->draw(box, task.data.scale, std::min(task.data.alpha, alpha));
-    // i really should make a function for this..
-#ifndef NDEBUG
-    auto text = g_pHyprOpenGL->renderText(std::format("Visibility: {:.2f} - Z: {:.2f}", task.visibility, task.data.z), CHyprColor(1.0, 1.0, 1.0, 1.0), 24);
-    Vector2D textPos = {
-        box.x + (box.width / 2.0f) - (text->m_size.x / 2.0f),
-        box.y + (box.height / 2.0f) - (text->m_size.y / 2.0f),
-    };
-    g_pHyprOpenGL->renderTexture(text, {textPos, text->m_size}, {.a = 1.0f});
-#endif
   }
-#ifndef NDEBUG
-  if (!dmg.empty())
-    g_pHyprOpenGL->renderRect(dmg.getExtents(), {0.5, 0.5, 0.0, 0.5}, {});
-#endif
 }
 
 void Monitor::activeChanged() {
-  LOG_SCOPE(Log::ERR)
+  LOG_SCOPE()
   const int count = windows.size();
   if (count <= 0) {
-    LOG(ERR, "count <= 0");
+    LOG(Log::UPDATE, "count <= 0");
     return;
   }
 
-  LOG(ERR, "activeWindow1: {}, size: {}", activeWindow, count);
+  LOG(Log::UPDATE, "activeWindow1: {}, size: {}", activeWindow, count);
 
   for (auto i = 0; i < windows.size(); ++i) {
     windows[i]->isActive = (i == activeWindow);
   }
-  LOG(ERR, "activeWindow2: {}, size: {}", activeWindow, count);
+  LOG(Log::UPDATE, "activeWindow2: {}, size: {}", activeWindow, count);
   // Why am i doing this backwards??
   const auto target = (M_PI / 2) + (M_PI * 2.0f * activeWindow) / count;
   auto diff = target - rotation.target;
@@ -234,6 +225,6 @@ void Monitor::activeChanged() {
 }
 
 bool Monitor::isActive() const {
-  LOG_SCOPE(Log::ERR)
+  LOG_SCOPE()
   return manager->activeMonitor == monitor->m_id;
 }

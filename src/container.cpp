@@ -1,6 +1,7 @@
 #include "container.hpp"
 #include "defines.hpp"
 #include "helpers.hpp"
+#include "logger.hpp"
 #include <hyprutils/math/Vector2D.hpp>
 #include <src/desktop/state/FocusState.hpp>
 #include <src/desktop/view/Window.hpp>
@@ -25,7 +26,7 @@ void WindowCard::attachListeners(SP<CWLSurfaceResource> surface) {
     commit.push_back(s->m_events.commit.listen([this] {
       const auto since = NOW - this->lastCommit;
       if (FloatTime(since).count() > 0.0016) {
-        LOG(ERR, "In commit for: {}, since: {}", this->window->m_title, FloatTime(since).count());
+        LOG(Log::SNAPSHOT, "In commit for: {}, since: {}", this->window->m_title, FloatTime(since).count());
         this->ready = false;
         this->lastCommit = NOW;
       }
@@ -34,8 +35,16 @@ void WindowCard::attachListeners(SP<CWLSurfaceResource> surface) {
                         nullptr);
 }
 
+void WindowCard::setPosition(const CBox &position) {
+  this->position = position;
+}
+
+CBox WindowCard::getPosition() const {
+  return position;
+}
+
 void WindowCard::requestFrame(PHLMONITOR monitor) {
-  LOG(ERR, "{}: mapped: {}, ready: {}", window->m_title, window->resource()->m_mapped, ready);
+  LOG(Log::SNAPSHOT, "{}: mapped: {}, ready: {}", window->m_title, window->resource()->m_mapped, ready);
   if (!window->resource())
     return;
 
@@ -47,7 +56,7 @@ void WindowCard::requestFrame(PHLMONITOR monitor) {
 }
 
 void WindowCard::draw(const CBox &box, const float scale, const float alpha = 1.0f) {
-  LOG_SCOPE();
+  LOG_SCOPE(Log::DRAW);
   if (!window)
     return;
   // whoops, almost went to infinity with low scales.
@@ -56,54 +65,38 @@ void WindowCard::draw(const CBox &box, const float scale, const float alpha = 1.
 
   contentBox = box;
   contentBox.round();
-  contentBox = contentBox.expand(-Config::borderSize);
-  if (scale != 1.0f) {
-    Vector2D center = box.pos() + box.size() / 2.0f;
-    contentBox.width *= scale;
-    contentBox.height *= scale;
-    contentBox.x = center.x - contentBox.width / 2.0f;
-    contentBox.y = center.y - contentBox.height / 2.0f;
-  }
+  contentBox = contentBox.expand(-Config::borderSize * scale);
+
   const auto padding = 4;
   const auto barHeight = (Config::fontSize + padding) * scale;
+
   titleBox = {contentBox.x, contentBox.y, contentBox.width, barHeight};
   previewBox = {contentBox.x, contentBox.y + barHeight, contentBox.width, contentBox.height - barHeight};
-  /* Maybe..
-  auto shadowBox = box;
-  shadowBox.round();
-  static const auto DROPSHADOW = 2;
-  shadowBox.expand(DROPSHADOW);
-  g_pHyprOpenGL->renderRoundedShadow(shadowBox, 2, 2, DROPSHADOW * 2, Colors::BLACK, 0.4f);
-  */
+
   drawTitle(box, scale, alpha);
   drawBorder(alpha);
+
   auto texture = fb.getTexture();
-  if (!texture) {
-    g_pHyprOpenGL->renderRect(previewBox, CHyprColor(0.0, 0.0, 0.0, 1.0), {});
-  } else {
-    if (!texture) {
-      LOG(ERR, "texture: nullptr");
-      return;
-    }
-    LOG(ERR, "texpass: ({}) alpha: {}", window->m_title, alpha);
+  if (texture) {
     g_pHyprOpenGL->renderRect(previewBox, CHyprColor(0.0, 0.0, 0.0, 1.0 * alpha), {});
     g_pHyprOpenGL->renderTexture(texture, previewBox, {.a = alpha});
   }
 #ifndef NDEBUG
-  g_pHyprOpenGL->renderRect(contentBox, CHyprColor(1.0, 0.0, 0.0, 0.2), {});
+  // g_pHyprOpenGL->renderRect(contentBox, CHyprColor(1.0, 0.0, 0.0, 0.2), {});
+  g_pHyprOpenGL->renderRect(position, CHyprColor(1.0, 1.0, 0.0, 0.4), {});
   auto text = g_pHyprOpenGL->renderText(std::format("Time: {} ms", std::chrono::duration_cast<std::chrono::milliseconds>(NOW - lastCommit).count()), CHyprColor(1.0, 1.0, 1.0, 1.0), 20);
   g_pHyprOpenGL->renderTexture(text, {contentBox.pos(), text->m_size}, {.a = 1.0});
 #endif
 }
 
 bool WindowCard::snapshot(const Vector2D &targetSize) {
-  LOG_SCOPE(Log::ERR);
+  LOG_SCOPE(Log::SNAPSHOT);
   if (!window || !window->wlSurface() || !window->wlSurface()->resource()) {
-    LOG(ERR, "No window or surface");
+    LOG(Log::SNAPSHOT, "No window or surface");
     return false;
   }
   if (targetSize.x <= 1 || targetSize.y <= 1) {
-    LOG(ERR, "targetSize.x ({}) <= 1 || targetSize.y ({}) <= 1", targetSize.x, targetSize.y);
+    LOG(Log::SNAPSHOT, "targetSize.x ({}) <= 1 || targetSize.y ({}) <= 1", targetSize.x, targetSize.y);
     return false;
   }
 

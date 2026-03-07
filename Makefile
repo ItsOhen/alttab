@@ -2,6 +2,8 @@ CORES := $(shell nproc 2>/dev/null || getconf NPROCESSORS_CONF)
 BUILD_DIR := build
 TARGET := alttab
 
+LOGTYPE ?= Log::NONE
+
 all: release
 
 release:
@@ -10,7 +12,7 @@ release:
 #Shitty hyprpm..
 	cp build/$(TARGET).so .
 debug:
-	cmake -B $(BUILD_DIR) -S . -DCMAKE_BUILD_TYPE=Debug
+	cmake -B $(BUILD_DIR) -S . -DCMAKE_BUILD_TYPE=Debug -DLOG_FLAGS="$(LOGTYPE)"
 	cmake --build $(BUILD_DIR) -j$(CORES)
 	
 run:
