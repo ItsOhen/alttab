@@ -193,6 +193,8 @@ void Monitor::draw(const CRegion &damage, const float alpha) {
 
   for (auto taskIt = renderTasks.rbegin(); taskIt != renderTasks.rend(); ++taskIt) {
     auto &task = *taskIt;
+    if (!task.card)
+      continue;
     CBox box = task.card->getPosition();
 
     box.x -= renderOffset.x;

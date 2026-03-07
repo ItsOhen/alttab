@@ -65,6 +65,13 @@ Manager::Manager() {
       onMouseClick(button);
     }
   });
+  listeners.mouseMove = HOOK_EVENT(input.mouse.move, [this](auto pos, auto &cbInfo) {
+    // if (this->active) {
+    //   cbInfo.cancelled = true;
+    // }
+    // Noop until i figure out a better way to handle cancel, so that it still does monitor change and cursor draws.
+    ;
+  });
 #endif
 
   lastFrame = lastUpdate = NOW;
@@ -103,6 +110,7 @@ void Manager::init() {
   graceExpired = true;
   activeMonitor = Desktop::focusState()->monitor()->m_id;
   monitorFade.set(1.0f, false);
+  stack.clear();
   rebuild();
   loopTimer = makeShared<CEventLoopTimer>(std::chrono::milliseconds(10), [this](SP<CEventLoopTimer> timer, void *data) {
     auto d = FloatTime(NOW - lastFrame).count();
@@ -122,6 +130,7 @@ void Manager::deactivate() {
   }
   loopTimer.reset();
   graceTimer.reset();
+  stack.clear();
   monitors.clear();
 }
 
@@ -277,6 +286,7 @@ void Manager::onConfigReload() {
 
   Config::activeBorderColor = rc<CGradientValueData *>(std::any_cast<void *>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:border_active")->getValue()));
   Config::inactiveBorderColor = rc<CGradientValueData *>(std::any_cast<void *>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:border_inactive")->getValue()));
+  stack.clear();
 }
 
 void Manager::onWindowCreated(PHLWINDOW window) {

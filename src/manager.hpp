@@ -65,6 +65,7 @@ private:
     CHyprSignalListener monitorAdded;
     CHyprSignalListener monitorRemoved;
     CHyprSignalListener mouseClick;
+    CHyprSignalListener mouseMove;
   } listeners;
 #endif
 

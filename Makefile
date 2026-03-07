@@ -2,7 +2,7 @@ CORES := $(shell nproc 2>/dev/null || getconf NPROCESSORS_CONF)
 BUILD_DIR := build
 TARGET := alttab
 
-LOGTYPE ?= Log::NONE
+LOGTYPE ?= NONE
 
 all: release
 
