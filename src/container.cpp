@@ -79,8 +79,6 @@ void WindowCard::draw() {
         tex.a = alpha;
 
         g_pHyprRenderer->m_renderPass.add(makeUnique<CTexPassElement>(tex));
-
-        s->presentFeedback(NOW, MONITOR, true);
       },
       nullptr);
 
@@ -103,6 +101,13 @@ void WindowCard::draw() {
   debug.color = {1.0, 1.0, 0.0, 0.1};
   g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(debug));
 #endif
+}
+
+void WindowCard::present() {
+  const auto MONITOR = Desktop::focusState()->monitor();
+  window->wlSurface()->resource()->breadthfirst(
+      [&](SP<CWLSurfaceResource> s, const Vector2D &offset, void *) { s->presentFeedback(NOW, MONITOR, false); },
+      nullptr);
 }
 
 CardLayout WindowCard::buildLayout(float scale) {

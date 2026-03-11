@@ -22,6 +22,7 @@ class WindowCard {
 public:
   WindowCard(PHLWINDOW window);
   void draw();
+  void present();
   void setPosition(const CBox &position);
   CBox getPosition() const;
   CardLayout buildLayout(float scale);

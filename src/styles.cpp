@@ -1,5 +1,6 @@
 #include "styles.hpp"
 #include "defines.hpp"
+#include "logger.hpp"
 #include <hyprutils/math/Vector2D.hpp>
 #include <src/desktop/state/FocusState.hpp>
 #include <src/helpers/Monitor.hpp>
@@ -24,14 +25,16 @@ RenderData Carousel::calculate(const StyleContext &ctx, const Vector2D &surfaceS
   if (finalAlpha < 0.01f)
     return {.visible = false};
 
-  float scale = Config::windowSizeInactive + (1.0f - Config::windowSizeInactive) * zNorm;
+  LOG(Log::STYLE, "CWSize {}, CWSizeActive {}, CWSizeInactive {}", Config::CWSize, Config::CWSizeActive, Config::CWSizeInactive);
+
+  float scale = Config::CWSizeInactive + (1.0f - Config::CWSizeInactive) * zNorm;
   if (z > 0.5f) {
-    scale *= 1.0f + (Config::windowSizeActive - 1.0f) * ((z - 0.5f) * 2.0f * ctx.scale);
+    scale *= 1.0f + (Config::CWSizeActive - 1.0f) * ((z - 0.5f) * 2.0f * ctx.scale);
   }
 
   const float safeY = (surfaceSize.y > 1.0f) ? surfaceSize.y : 1.0f;
   const float aspect = surfaceSize.x / safeY;
-  const float baseH = ctx.mSize.y * Config::windowSize * scale;
+  const float baseH = ctx.mSize.y * ((Config::CWSize) ? Config::CWSize : Config::windowSize) * scale;
   const Vector2D size = {baseH * aspect, baseH};
 
   const Vector2D pos = {

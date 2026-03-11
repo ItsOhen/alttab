@@ -27,8 +27,8 @@ static int counter = 0;
 static int lastCounter = 0;
 #endif
 
-Manager::Manager() : monitorOffset(Config::monitorAnimationSpeed),
-                     monitorFade(0.4f) {
+Manager::Manager() : monitorOffset(&Config::monitorAnimationSpeed),
+                     monitorFade(&Config::monitorFade) {
   LOG_SCOPE()
 
 #ifdef HYPRLAND_LEGACY
@@ -179,11 +179,8 @@ void Manager::update(float delta) {
   LOG_SCOPE(Log::UPDATE)
   const auto MONITOR = Desktop::focusState()->monitor();
   const Vector2D monitorPos = MONITOR->m_position;
-
-  bool animating = AnimationManager::get().tick(delta) || stack.empty();
-
+  const bool animating = AnimationManager::get().tick(delta) || stack.empty();
   const float spacing = MONITOR->m_size.y * Config::monitorSpacing;
-
   stack.clear();
   CRegion damage;
   int i = 0;
@@ -196,18 +193,15 @@ void Manager::update(float delta) {
     i++;
     stack.push_back({.monitor = mon.get(), .offset = off, .z = z});
   }
-
   std::sort(stack.begin(), stack.end(), [](const auto &a, const auto &b) {
     return a.z < b.z;
   });
-
   lastFrame = NOW;
   CRegion total = damage;
   total.add(previousFrameDamage);
-  // some damage padding to not have to keep track of start and end of animations.
-  total.expand(5);
   g_pHyprRenderer->damageRegion(total);
-  previousFrameDamage = damage;
+  if (animating)
+    previousFrameDamage = damage;
 }
 
 void Manager::move(Direction dir) {
@@ -332,7 +326,9 @@ void Manager::onRender(eRenderStage stage) {
   switch (stage) {
   case eRenderStage::RENDER_PRE: {
     auto delta = FloatTime(NOW - lastUpdate).count();
+    LOG(Log::DAMAGE, "previousFrameDamage: x1={}, y1={}, x2={}, y2={}", previousFrameDamage.getExtents().x, previousFrameDamage.getExtents().y, previousFrameDamage.getExtents().w, previousFrameDamage.getExtents().h);
     update(delta);
+    LOG(Log::DAMAGE, "previousFrameDamage: x1={}, y1={}, x2={}, y2={}", previousFrameDamage.getExtents().x, previousFrameDamage.getExtents().y, previousFrameDamage.getExtents().w, previousFrameDamage.getExtents().h);
     lastUpdate = NOW;
   } break;
 
@@ -424,67 +420,33 @@ void Manager::rebuild() {
       continue;
     monitors[m->m_id] = makeUnique<Monitor>(m);
   }
-
-  // auto activeWindow = Desktop::focusState()->window();
-  PHLWINDOWREF activeWindow;
-
+  const auto activeWindow = Desktop::focusState()->window();
   const auto history = Desktop::History::windowTracker()->fullHistory();
-  /*
-  if (history.size() >= 2) {
-    activeWindow = *(history | std::views::reverse | std::views::drop(1)).begin();
-  } else {
-    activeWindow = Desktop::focusState()->window();
-  }
-  */
-  activeWindow = Desktop::focusState()->window();
   activeMonitor = Desktop::focusState()->monitor()->m_id;
   monitorOffset.snap(activeMonitor);
-
   for (auto &[monID, mon] : monitors) {
     std::vector<PHLWINDOW> monitorWindows;
-
     for (auto it = history.rbegin(); it != history.rend(); ++it) {
       auto w = it->lock();
       if (!w)
         continue;
-
       if (!Config::includeSpecial && w->m_workspace && w->m_workspace->m_isSpecialWorkspace)
         continue;
-
       if (w->m_isMapped && (!Config::splitMonitor || w->m_monitor.lock() == mon->monitor)) {
         monitorWindows.emplace_back(w);
       }
     }
-    /*
-    // TODO: Find a better fallback in-case some window is in the history but not mapped..
-    for (const auto &w : g_pCompositor->m_windows) {
-      if (std::find(monitorWindows.begin(), monitorWindows.end(), w) == monitorWindows.end()) {
-        if (!Config::includeSpecial && w->m_workspace && w->m_workspace->m_isSpecialWorkspace)
-          continue;
-
-        if (w->m_isMapped && (!Config::splitMonitor || w->m_monitor.lock() == mon->monitor)) {
-          monitorWindows.emplace_back(w);
-        }
-      }
+    const auto it = std::find_if(monitorWindows.begin(), monitorWindows.end(),
+                                 [&](const auto &w) { return w == activeWindow || w == mon->monitor->m_activeWorkspace->m_lastFocusedWindow; });
+    const int activeIdx = it != monitorWindows.end() ? std::distance(monitorWindows.begin(), it) : 0;
+    for (const auto &w : monitorWindows)
+      mon->addWindow(w);
+    if (!monitorWindows.empty()) {
+      mon->activeWindow = activeIdx;
+      mon->windows[activeIdx]->isActive = true;
+      if (activeIdx > 0)
+        mon->rotation.snap((M_PI / 2.0f) + ((2.0f * M_PI * activeIdx) / monitorWindows.size()));
     }
-    */
-    // i reall should clean this up and make a setActive..
-    for (const auto &w : monitorWindows) {
-      auto card = mon->addWindow(w);
-      if (w == activeWindow) {
-        mon->activeWindow = mon->windows.size() - 1;
-        const int count = monitorWindows.size();
-        const float angle = (M_PI / 2.0f) + ((2.0f * M_PI * mon->activeWindow) / count);
-        mon->rotation.snap(angle);
-        mon->windows.back()->isActive = true;
-      } else if (w == mon->monitor->m_activeWorkspace->m_lastFocusedWindow) {
-        mon->activeWindow = mon->windows.size() - 1;
-        mon->windows.back()->isActive = true;
-      }
-    }
-    // g_pHyprRenderer->damageMonitor(mon->monitor);
-    //  damageMonitor should do this??
-    //  g_pCompositor->scheduleFrameForMonitor(mon->monitor);
   }
 }
 

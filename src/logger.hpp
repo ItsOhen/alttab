@@ -16,6 +16,7 @@ enum LogType : uint32_t {
   MOVE = 1 << 5,
   MOUSE = 1 << 6,
   DAMAGE = 1 << 7,
+  STYLE = 1 << 8,
   ALL = 0xFFFFFFFF
 };
 

@@ -32,17 +32,22 @@ enum class Direction : uint8_t {
   X(INT, blurBG, "blur", 1)                                        \
   X(FLOAT, unfocusedAlpha, "unfocused_alpha", 0.6f)                \
   X(INT, powersave, "powersave", 1)                                \
+  X(INT, livePreview, "live_preview", 1)                           \
+  X(FLOAT, previewCutoff, "preview_cutoff", 0.25f)                 \
   X(FLOAT, rotationSpeed, "animation_speed", 1.0f)                 \
-  X(FLOAT, carouselSize, "carousel_size", 0.5f)                    \
   X(FLOAT, windowSize, "window_size", 0.3f)                        \
-  X(FLOAT, windowSizeActive, "window_size_active", 1.2f)           \
-  X(FLOAT, windowSizeInactive, "window_size_inactive", 0.7f)       \
+  X(FLOAT, carouselSize, "carousel:size", 0.5f)                    \
+  X(FLOAT, CWSize, "carousel:window_size", 0.3f)                   \
+  X(FLOAT, CWSizeActive, "carousel:active", 0.5f)                  \
+  X(FLOAT, CWSizeInactive, "carousel:inactive", 0.7f)              \
+  X(FLOAT, gridSize, "grid:size", 0.5f)                            \
   X(FLOAT, warp, "warp", 0.20f)                                    \
   X(FLOAT, tilt, "tilt", 10.0f)                                    \
   X(INT, bringToActive, "bring_to_active", 1)                      \
   X(INT, splitMonitor, "split_monitor", 1)                         \
   X(FLOAT, monitorSpacing, "monitor_spacing", 0.3f)                \
   X(FLOAT, monitorAnimationSpeed, "monitor_animation_speed", 0.4f) \
+  X(FLOAT, monitorFade, "monitor_fade", 0.4f)                      \
   X(INT, grace, "grace", 100)                                      \
   X(INT, includeSpecial, "include_special", 1)                     \
   X(STRING, style, "style", "carousel")

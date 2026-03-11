@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <hyprlang.hpp>
 #include <src/helpers/memory/Memory.hpp>
 #include <vector>
 
@@ -37,9 +38,9 @@ struct AnimatedValue : public IAnimatedValue {
   T start{};
   T target{};
   float progress = 1.0f;
-  float speed = 0.5f;
+  Hyprlang::FLOAT *speed = nullptr;
 
-  AnimatedValue(const float speed) : speed(speed) {}
+  AnimatedValue(auto *speed) : speed(speed) {}
 
   AnimatedValue &operator=(const T &val) {
     set(val, false);
@@ -66,7 +67,7 @@ struct AnimatedValue : public IAnimatedValue {
       current = target;
       return;
     }
-    progress = std::min(1.0f, progress + (delta / std::max(0.01f, speed)));
+    progress = std::min(1.0f, progress + (delta / std::max(0.01f, *speed)));
     float t = progress * (2.0f - progress);
     current = start + (target - start) * t;
   }

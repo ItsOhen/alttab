@@ -18,9 +18,9 @@
 #include <src/protocols/PresentationTime.hpp>
 
 Monitor::Monitor(PHLMONITOR monitor) : monitor(monitor),
-                                       alpha(Config::monitorAnimationSpeed),
-                                       rotation(Config::rotationSpeed),
-                                       zoom(Config::monitorAnimationSpeed) {
+                                       alpha(&Config::monitorAnimationSpeed),
+                                       rotation(&Config::rotationSpeed),
+                                       zoom(&Config::monitorAnimationSpeed) {
   createTexture();
   rotation.snap(M_PI / 2.0f);
   if (isActive()) {
@@ -144,7 +144,6 @@ void Monitor::update(const float delta, const Vector2D &offset, CRegion &damage)
   });
 
   CRegion usedArea;
-  bool animating = rotation.done() || zoom.done() || alpha.done();
   for (auto &task : renderTasks) {
     CRegion visible = CRegion(task.data.position).subtract(usedArea);
     if (visible.empty())
@@ -168,11 +167,10 @@ void Monitor::draw(const CRegion &damage, const float alpha) {
   const auto FOCUS = Desktop::focusState()->monitor();
   const Vector2D renderOffset = FOCUS->m_position * FOCUS->m_scale;
 
-  for (auto taskIt = renderTasks.rbegin(); taskIt != renderTasks.rend(); ++taskIt) {
-    auto &task = *taskIt;
-    if (!task.card)
-      continue;
+  for (auto &task : renderTasks | std::views::reverse | std::views::filter([](auto &t) { return t.card; })) {
     task.card->draw();
+    if (Config::livePreview && task.visibility > Config::previewCutoff)
+      task.card->present();
   }
 }
 
