@@ -284,6 +284,11 @@ void Manager::onConfigReload() {
   CONFIG_VARS
 #undef X
 
+#define X(type, name, conf) \
+  Config::name.get() = *CConfigValue<Hyprlang::type>("plugin:alttab:" conf);
+  CONFIG_VARS_OPTIONAL_FLOAT
+#undef X
+
   Config::activeBorderColor = rc<CGradientValueData *>(std::any_cast<void *>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:border_active")->getValue()));
   Config::inactiveBorderColor = rc<CGradientValueData *>(std::any_cast<void *>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:border_inactive")->getValue()));
   stack.clear();

@@ -25,16 +25,18 @@ RenderData Carousel::calculate(const StyleContext &ctx, const Vector2D &surfaceS
   if (finalAlpha < 0.01f)
     return {.visible = false};
 
-  LOG(Log::STYLE, "CWSize {}, CWSizeActive {}, CWSizeInactive {}", Config::CWSize, Config::CWSizeActive, Config::CWSizeInactive);
+  const float wSize = Config::CWSize.value_or(Config::windowSize);
+  const float activeSize = Config::CWSizeActive.value_or(Config::windowSizeActive);
+  const float inactiveSize = Config::CWSizeInactive.value_or(Config::windowSizeInactive);
 
-  float scale = Config::CWSizeInactive + (1.0f - Config::CWSizeInactive) * zNorm;
+  float scale = inactiveSize + (1.0f - inactiveSize) * zNorm;
   if (z > 0.5f) {
-    scale *= 1.0f + (Config::CWSizeActive - 1.0f) * ((z - 0.5f) * 2.0f * ctx.scale);
+    scale *= 1.0f + (activeSize - 1.0f) * ((z - 0.5f) * 2.0f * ctx.scale);
   }
 
   const float safeY = (surfaceSize.y > 1.0f) ? surfaceSize.y : 1.0f;
   const float aspect = surfaceSize.x / safeY;
-  const float baseH = ctx.mSize.y * ((Config::CWSize) ? Config::CWSize : Config::windowSize) * scale;
+  const float baseH = ctx.mSize.y * wSize * scale;
   const Vector2D size = {baseH * aspect, baseH};
 
   const Vector2D pos = {

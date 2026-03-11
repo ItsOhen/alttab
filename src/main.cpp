@@ -154,6 +154,11 @@ void registerConfig() {
   CONFIG_VARS
 #undef X
 
+#define X(type, name, conf) \
+  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:" conf, Hyprlang::type{-1});
+  CONFIG_VARS_OPTIONAL_FLOAT
+#undef X
+
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:border_active", Hyprlang::CConfigCustomValueType{&configHandleGradientSet, &configHandleGradientDestroy, "0xff00ccdd"});
   HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:border_inactive", Hyprlang::CConfigCustomValueType{&configHandleGradientSet, &configHandleGradientDestroy, "0xaabbccddff"});
 }

@@ -36,11 +36,8 @@ enum class Direction : uint8_t {
   X(FLOAT, previewCutoff, "preview_cutoff", 0.25f)                 \
   X(FLOAT, rotationSpeed, "animation_speed", 1.0f)                 \
   X(FLOAT, windowSize, "window_size", 0.3f)                        \
-  X(FLOAT, carouselSize, "carousel:size", 0.5f)                    \
-  X(FLOAT, CWSize, "carousel:window_size", 0.3f)                   \
-  X(FLOAT, CWSizeActive, "carousel:active", 0.5f)                  \
-  X(FLOAT, CWSizeInactive, "carousel:inactive", 0.7f)              \
-  X(FLOAT, gridSize, "grid:size", 0.5f)                            \
+  X(FLOAT, windowSizeActive, "window_size_active", 1.2f)           \
+  X(FLOAT, windowSizeInactive, "window_size_inactive", 0.6f)       \
   X(FLOAT, warp, "warp", 0.20f)                                    \
   X(FLOAT, tilt, "tilt", 10.0f)                                    \
   X(INT, bringToActive, "bring_to_active", 1)                      \
@@ -52,9 +49,45 @@ enum class Direction : uint8_t {
   X(INT, includeSpecial, "include_special", 1)                     \
   X(STRING, style, "style", "carousel")
 
+#define CONFIG_VARS_OPTIONAL_FLOAT              \
+  X(FLOAT, carouselSize, "carousel:size")       \
+  X(FLOAT, CWSize, "carousel:window_size")      \
+  X(FLOAT, CWSizeActive, "carousel:active")     \
+  X(FLOAT, CWSizeInactive, "carousel:inactive") \
+  X(FLOAT, gridSize, "grid:columns")            \
+  X(FLOAT, GWSize, "grid:window_size")          \
+  X(FLOAT, GWSizeActive, "grid:active")         \
+  X(FLOAT, GWSizeInactive, "grid:inactive")     \
+  X(FLOAT, slideSize, "slide:spacing")          \
+  X(FLOAT, slideSizeActive, "slide:active")     \
+  X(FLOAT, slideSizeInactive, "slide:inactive") \
+  X(FLOAT, gridSpacing, "grid:spacing")
+
+template <typename T>
+class COptional {
+public:
+  COptional() = default;
+
+  T value_or(T fallback) const {
+    return m_val < 0 ? fallback : m_val;
+  }
+
+  operator T() const { return m_val; }
+
+  T &get() { return m_val; }
+  const T &get() const { return m_val; }
+
+private:
+  T m_val = -1;
+};
+
 namespace Config {
 #define X(type, name, conf, def) inline Hyprlang::type name;
 CONFIG_VARS
+#undef X
+
+#define X(type, name, conf) inline COptional<Hyprlang::type> name;
+CONFIG_VARS_OPTIONAL_FLOAT
 #undef X
 
 inline CGradientValueData *activeBorderColor = nullptr;
