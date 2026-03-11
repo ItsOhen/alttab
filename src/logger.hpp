@@ -15,6 +15,7 @@ enum LogType : uint32_t {
   UPDATE = 1 << 4,
   MOVE = 1 << 5,
   MOUSE = 1 << 6,
+  DAMAGE = 1 << 7,
   ALL = 0xFFFFFFFF
 };
 
@@ -114,7 +115,7 @@ private:
 inline UP<DebugText> Overlay = makeUnique<DebugText>();
 
 #ifndef NDEBUG
-#define LOG_SCOPE(...) ScopeLogger scope_log(__FUNCTION__ __VA_OPT__(, ) __VA_ARGS__);
+#define LOG_SCOPE(...) ScopeLogger scope_log(__PRETTY_FUNCTION__ __VA_OPT__(, ) __VA_ARGS__);
 #else
 #define LOG_SCOPE(...) \
   do {                 \

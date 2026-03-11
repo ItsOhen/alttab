@@ -1,4 +1,5 @@
 #pragma once
+#include "animvar.hpp"
 #include "monitor.hpp"
 #include "styles.hpp"
 #include <map>
@@ -6,7 +7,9 @@
 #include <src/helpers/time/Timer.hpp>
 #include <src/managers/eventLoop/EventLoopTimer.hpp>
 #include <src/render/Texture.hpp>
+#include <src/render/Transformer.hpp>
 #include <src/render/pass/PassElement.hpp>
+#include <src/render/pass/SurfacePassElement.hpp>
 
 class Manager {
 public:
@@ -42,6 +45,7 @@ private:
   };
   void renderBackground(MONITORID monid, const CRegion &damage);
   void renderMonitors(const CRegion &damage);
+  void renderDamage(const CRegion &damage);
 
   bool setLayout();
 
@@ -80,16 +84,9 @@ private:
   SP<IStyle> layoutStyle;
   bool graceExpired = false;
   std::vector<MonitorElement> stack;
+  CRegion previousFrameDamage;
 
   friend class Monitor;
 };
 
 inline UP<Manager> manager;
-
-class RenderPass : public IPassElement {
-public:
-  virtual void draw(const CRegion &damage);
-  virtual bool needsLiveBlur() { return false; }
-  virtual bool needsPrecomputeBlur() { return false; }
-  virtual const char *passName() { return "TabCarouselPassElement"; }
-};

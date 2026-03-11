@@ -1,5 +1,4 @@
 #pragma once
-#include "logger.hpp"
 #include <src/config/ConfigDataValues.hpp>
 #include <src/desktop/DesktopTypes.hpp>
 #include <src/helpers/Color.hpp>
@@ -13,6 +12,8 @@
 #endif
 
 inline HANDLE PHANDLE = nullptr;
+
+inline bool OVERRIDE_WORKSPACE = false;
 
 enum class Direction : uint8_t {
   UP,

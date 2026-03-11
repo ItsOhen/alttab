@@ -1,6 +1,7 @@
 #include "manager.hpp"
 #include "defines.hpp"
 #include "helpers.hpp"
+#include "logger.hpp"
 #include <aquamarine/output/Output.hpp>
 #include <chrono>
 #include <hyprutils/math/Vector2D.hpp>
@@ -9,13 +10,14 @@
 #include <src/desktop/state/FocusState.hpp>
 #include <src/helpers/Color.hpp>
 #include <src/helpers/Monitor.hpp>
+#include <src/managers/PointerManager.hpp>
 #include <src/managers/eventLoop/EventLoopManager.hpp>
 #include <src/managers/input/InputManager.hpp>
 #include <src/plugins/PluginAPI.hpp>
 #include <src/protocols/PresentationTime.hpp>
 #include <src/render/pass/RectPassElement.hpp>
 #include <src/render/pass/TexPassElement.hpp>
-#define private public
+#define protected public
 #include <src/render/OpenGL.hpp>
 #include <src/render/Renderer.hpp>
 #undef private
@@ -25,7 +27,8 @@ static int counter = 0;
 static int lastCounter = 0;
 #endif
 
-Manager::Manager() {
+Manager::Manager() : monitorOffset(Config::monitorAnimationSpeed),
+                     monitorFade(0.4f) {
   LOG_SCOPE()
 
 #ifdef HYPRLAND_LEGACY
@@ -88,7 +91,6 @@ void Manager::activate() {
   active = true;
   graceTimer = makeShared<CEventLoopTimer>(std::chrono::milliseconds(Config::grace), [this](SP<CEventLoopTimer> timer, void *data) { this->init(); }, nullptr);
   g_pEventLoopManager->addTimer(graceTimer);
-  // g_pHyprRenderer->damageMonitor(Desktop::focusState()->monitor());
 }
 
 bool Manager::setLayout() {
@@ -112,13 +114,9 @@ void Manager::init() {
   monitorFade.set(1.0f, false);
   stack.clear();
   rebuild();
-  loopTimer = makeShared<CEventLoopTimer>(std::chrono::milliseconds(10), [this](SP<CEventLoopTimer> timer, void *data) {
-    auto d = FloatTime(NOW - lastFrame).count();
-    auto min = std::min(d, (monitors[activeMonitor]->monitor->m_refreshRate * 2) / 1000);
-    update(min);
-    lastFrame = NOW;
-    loopTimer->updateTimeout(std::chrono::milliseconds(16)); }, nullptr);
-  g_pEventLoopManager->addTimer(loopTimer);
+  lastFrame = NOW;
+  OVERRIDE_WORKSPACE = true;
+  damageMonitors();
 }
 
 void Manager::deactivate() {
@@ -128,10 +126,10 @@ void Manager::deactivate() {
   for (const auto &[id, mon] : monitors) {
     g_pHyprRenderer->damageMonitor(mon->monitor);
   }
-  loopTimer.reset();
   graceTimer.reset();
   stack.clear();
   monitors.clear();
+  OVERRIDE_WORKSPACE = false;
 }
 
 void Manager::toggle() {
@@ -182,22 +180,19 @@ void Manager::update(float delta) {
   const auto MONITOR = Desktop::focusState()->monitor();
   const Vector2D monitorPos = MONITOR->m_position;
 
-  monitorFade.tick(delta, 0.4);
-  monitorOffset.tick(delta, Config::monitorAnimationSpeed);
+  bool animating = AnimationManager::get().tick(delta) || stack.empty();
 
   const float spacing = MONITOR->m_size.y * Config::monitorSpacing;
 
   stack.clear();
+  CRegion damage;
   int i = 0;
   for (auto &[id, mon] : monitors) {
     float off = (i - monitorOffset.current) * spacing;
     mon->position = {monitorPos.x, monitorPos.y + off, MONITOR->m_size.x, MONITOR->m_size.y};
     float z = (id == activeMonitor) ? 1000.0f : -std::abs(i - monitorOffset.current);
-    mon->update(delta, {monitorPos.x, monitorPos.y + off});
-
-    if (mon->animating || !monitorOffset.done()) {
-      g_pHyprRenderer->damageMonitor(MONITOR);
-    }
+    if (animating)
+      mon->update(delta, {monitorPos.x, monitorPos.y + off}, damage);
     i++;
     stack.push_back({.monitor = mon.get(), .offset = off, .z = z});
   }
@@ -205,6 +200,14 @@ void Manager::update(float delta) {
   std::sort(stack.begin(), stack.end(), [](const auto &a, const auto &b) {
     return a.z < b.z;
   });
+
+  lastFrame = NOW;
+  CRegion total = damage;
+  total.add(previousFrameDamage);
+  // some damage padding to not have to keep track of start and end of animations.
+  total.expand(5);
+  g_pHyprRenderer->damageRegion(total);
+  previousFrameDamage = damage;
 }
 
 void Manager::move(Direction dir) {
@@ -241,38 +244,41 @@ void Manager::move(Direction dir) {
     activeMonitor = it->first;
     monitorOffset.set(activeMonitor);
   }
-
-  damageMonitors();
 }
 
 void Manager::draw(MONITORID monid, const CRegion &damage) {
-  const auto cur = Desktop::focusState()->monitor();
-  if (monitors.empty() || !monitors.contains(monid) || !monitors[monid]->monitor)
-    return;
-  renderBackground(monid, damage);
-  if (!Config::splitMonitor)
-    monitors[monid]->draw(damage, monitorFade.current);
-  else if (monid == cur->m_id)
-    renderMonitors(damage);
-
-#ifndef NDEBUG
-  Overlay->add(std::format("ActiveID: {}, Offset: {:.2f}", activeMonitor, monitorOffset.current));
-  Overlay->draw(cur);
-#endif
+  ;
 }
 
 void Manager::renderBackground(MONITORID monid, const CRegion &damage) {
-  if (Config::powersave) {
-    monitors[monid]->renderTexture(damage);
+  if (!monitors.contains(monid))
     return;
+  auto &mon = monitors[monid];
+  if (!mon->texture)
+    return;
+
+  auto tex = (Config::blurBG) ? mon->blurred : mon->texture;
+  const auto box = CBox{{}, mon->monitor->m_size};
+  CTexPassElement::SRenderData data;
+  data.tex = tex;
+  data.box = box;
+  data.clipRegion = damage;
+  data.a = 1.0f;
+  data.damage = {};
+  g_pHyprRenderer->m_renderPass.add(makeUnique<CTexPassElement>(data));
+
+  if (Config::dimEnabled) {
+    CRectPassElement::SRectData dimData;
+    dimData.box = box;
+    dimData.color = {0.0, 0.0, 0.0, Config::dimAmount};
+    data.damage = {};
+    g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(dimData));
   }
-  auto fakeDamage = damage;
-  g_pHyprOpenGL->renderRect(fakeDamage.getExtents(),
-                            CHyprColor(0.0, 0.0, 0.0, Config::dimEnabled ? Config::dimAmount : 0),
-                            {.blur = sc<bool>(Config::blurBG)});
 }
 
 void Manager::renderMonitors(const CRegion &damage) {
+  LOG_SCOPE(Log::DRAW)
+  LOG(Log::DRAW, "stack size: {}", stack.size());
   for (auto &el : stack) {
     el.monitor->draw(damage, monitorFade.current);
   }
@@ -291,11 +297,14 @@ void Manager::onConfigReload() {
 
 void Manager::onWindowCreated(PHLWINDOW window) {
   // TODO: add window to specific monitor
+  if (!active)
+    return;
+
   rebuild();
 }
 
 void Manager::onWindowDestroyed(PHLWINDOW window) {
-  if (!window)
+  if (!window || !active)
     return;
 
   auto mon = window->m_monitor.lock();
@@ -318,13 +327,41 @@ void Manager::onRender(eRenderStage stage) {
   if (!active)
     return;
 
+  const auto FOCUSED_MON = Desktop::focusState()->monitor();
+
   switch (stage) {
   case eRenderStage::RENDER_PRE: {
-    ;
+    auto delta = FloatTime(NOW - lastUpdate).count();
+    update(delta);
+    lastUpdate = NOW;
   } break;
-  case eRenderStage::RENDER_LAST_MOMENT:
-    g_pHyprRenderer->m_renderPass.add(makeUnique<RenderPass>());
-    break;
+
+  case eRenderStage::RENDER_LAST_MOMENT: {
+    const PHLMONITOR MONITOR = g_pHyprRenderer->m_renderData.pMonitor.lock();
+    if (!MONITOR)
+      return;
+    if (!monitors.contains(MONITOR->m_id))
+      return;
+    renderBackground(g_pHyprRenderer->m_renderData.pMonitor->m_id, g_pHyprRenderer->m_renderData.damage);
+    if (!Config::splitMonitor)
+      monitors[MONITOR->m_id]->draw(g_pHyprRenderer->m_renderData.damage, monitorFade.current);
+    else if (MONITOR == FOCUSED_MON) {
+      LOG(Log::DRAW, "Rendering Monitors");
+      renderMonitors(g_pHyprRenderer->m_renderData.damage);
+    }
+#ifndef NDEBUG
+    renderDamage(g_pHyprRenderer->m_renderData.damage);
+    // Overlay->add(std::format("ActiveID: {}, Offset: {:.2f}", activeMonitor, monitorOffset.current));
+    // Overlay->draw(MONITOR);
+#endif
+
+    // stupid cursor..
+    g_pPointerManager->renderSoftwareCursorsFor(g_pHyprRenderer->m_renderData.pMonitor.lock(), Time::steadyNow(), g_pHyprRenderer->m_renderData.damage);
+
+    if (MONITOR == FOCUSED_MON)
+      g_pCompositor->scheduleFrameForMonitor(MONITOR);
+  } break;
+
   default:
     break;
   }
@@ -379,6 +416,8 @@ void Manager::onMouseClick(const IPointer::SButtonEvent button) {
 
 void Manager::rebuild() {
   LOG_SCOPE()
+  if (!active)
+    return;
   setLayout();
   for (const auto &m : g_pCompositor->m_monitors) {
     if (!m->m_enabled || m->m_isUnsafeFallback)
@@ -443,9 +482,9 @@ void Manager::rebuild() {
         mon->windows.back()->isActive = true;
       }
     }
-    g_pHyprRenderer->damageMonitor(mon->monitor);
-    // damageMonitor should do this??
-    // g_pCompositor->scheduleFrameForMonitor(mon->monitor);
+    // g_pHyprRenderer->damageMonitor(mon->monitor);
+    //  damageMonitor should do this??
+    //  g_pCompositor->scheduleFrameForMonitor(mon->monitor);
   }
 }
 
@@ -453,7 +492,28 @@ bool Manager::isActive() const {
   return active;
 }
 
-void RenderPass::draw(const CRegion &damage) {
-  const auto MON = g_pHyprOpenGL->m_renderData.pMonitor;
-  manager->draw(MON->m_id, damage);
+void Manager::renderDamage(const CRegion &damage) {
+  LOG_SCOPE(Log::DAMAGE)
+
+  if (damage.empty())
+    return;
+
+  auto dmg = damage;
+  auto ext = dmg.getExtents();
+  const auto MON = Desktop::focusState()->monitor();
+
+  if (ext.pos() == Vector2D{0, 0} &&
+      ext.size().x >= MON->m_transformedSize.x &&
+      ext.size().y >= MON->m_transformedSize.y)
+    return;
+
+  LOG(Log::DAMAGE, "Damage: {} {}", ext.pos(), ext.size());
+
+  damage.forEachRect([](auto &rect) {
+    CRectPassElement::SRectData debug;
+    debug.box = {sc<double>(rect.x1), sc<double>(rect.y1),
+                 sc<double>(rect.x2 - rect.x1), sc<double>(rect.y2 - rect.y1)};
+    debug.color = {1.0, 0.0, 0.0, 0.1};
+    g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(debug));
+  });
 }

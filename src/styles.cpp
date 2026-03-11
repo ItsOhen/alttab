@@ -3,51 +3,48 @@
 #include <hyprutils/math/Vector2D.hpp>
 #include <src/desktop/state/FocusState.hpp>
 #include <src/helpers/Monitor.hpp>
+#include <xmmintrin.h>
 
-RenderData Carousel::calculate(const StyleContext &ctx, const Vector2D &surfaceSize) const {
-  const Vector2D center = {ctx.mSize.x / 2.0f, (ctx.mSize.y / 2.0f) + ctx.offset.y};
+RenderData Carousel::calculate(const StyleContext &ctx, const Vector2D &surfaceSize, const size_t index) const {
+  const float angle = ctx.rotation - (ctx.angleStep * index);
 
-  const float baseAngle = ctx.rotation - ((2.0f * M_PI * ctx.index) / ctx.count);
-  const float warpScale = Config::warp + (1.0f - Config::windowSizeInactive) * 0.2f;
-  const float angle = baseAngle - warpScale * std::sin(2.0f * baseAngle);
+  float s, c;
+#if defined(__linux__)
+  sincosf(angle, &s, &c);
+#else
+  s = std::sin(angle);
+  c = std::cos(angle);
+#endif
 
-  const float dist = std::abs(std::remainder(angle - (M_PI / 2.0f), 2.0f * M_PI));
-  const float z = std::sin(angle);
+  const float z = s;
+  const float zNorm = (z + 1.0f) * 0.5f;
 
-  const float focusWeight = std::pow(std::max(0.0f, 1.0f - (float)(dist / (M_PI / 2.0f))), 2.5f);
-  const float depthScale = std::lerp(Config::windowSizeInactive, 1.0f, (z + 1.0f) / 2.0f);
-  const float scale = depthScale * std::lerp(1.0f, Config::windowSizeActive, focusWeight * ctx.scale);
+  const float alphaWeight = (zNorm * 0.8f) + 0.2f;
+  const float finalAlpha = alphaWeight * ctx.alpha;
+  if (finalAlpha < 0.01f)
+    return {.visible = false};
 
-  const float aspect = (surfaceSize.y > 0) ? surfaceSize.x / surfaceSize.y : 1.77f;
-  Vector2D size = {ctx.mSize.y * Config::windowSize * aspect * scale, ctx.mSize.y * Config::windowSize * scale};
-
-  if (size.x > ctx.mSize.x * Config::windowSize * 1.5f) {
-    size.x = ctx.mSize.x * Config::windowSize * 1.5f;
-    size.y = size.x / aspect;
+  float scale = Config::windowSizeInactive + (1.0f - Config::windowSizeInactive) * zNorm;
+  if (z > 0.5f) {
+    scale *= 1.0f + (Config::windowSizeActive - 1.0f) * ((z - 0.5f) * 2.0f * ctx.scale);
   }
 
-  const float radius = (ctx.mSize.x * 0.5f) * Config::carouselSize;
-  const float radiusScale = radius * std::lerp(0.85f, 1.0f, (z + 1.0f) / 2.0f);
-  const float tiltOffset = radius * std::sin(Config::tilt * (M_PI / 180.0f));
+  const float safeY = (surfaceSize.y > 1.0f) ? surfaceSize.y : 1.0f;
+  const float aspect = surfaceSize.x / safeY;
+  const float baseH = ctx.mSize.y * Config::windowSize * scale;
+  const Vector2D size = {baseH * aspect, baseH};
 
   const Vector2D pos = {
-      center.x + (radiusScale * 1.4f) * std::cos(angle) - (size.x / 2.0f),
-      (center.y - tiltOffset) - (z * -tiltOffset) - (size.y / 2.0f)};
-
-  const float alphaWeight = std::pow(std::max(0.0f, 1.0f - (float)(dist / (M_PI / 1.25f))), 2.0f);
-  const float baseline = std::lerp(0.0f, Config::unfocusedAlpha, ctx.alpha);
-  const float finalAlpha = std::lerp(baseline + (z + 1.0f) * 0.2f, 1.0f, alphaWeight) * std::lerp(0.5f, 1.0f, ctx.alpha);
-
-  const CBox box{pos, size};
-  const bool isVisible = finalAlpha > 0.01f && box.overlaps({0, 0, ctx.mSize.x, ctx.mSize.y});
+      (ctx.midpoint.x + (ctx.radius * 1.4f * c)) - (size.x * 0.5f),
+      (ctx.midpoint.y + ctx.offset.y - ctx.tiltOffset) + (z * ctx.tiltOffset) - (size.y * 0.5f)};
 
   return {
-      .visible = isVisible,
-      .z = z + (alphaWeight * 0.1f),
+      .visible = true,
+      .z = z,
       .rotation = angle,
       .scale = scale,
-      .alpha = std::clamp(finalAlpha, 0.0f, 1.0f),
-      .position = box};
+      .alpha = (finalAlpha > 1.0f) ? 1.0f : finalAlpha,
+      .position = {pos, size}};
 }
 
 MoveResult Carousel::onMove(Direction dir, const size_t index, const size_t count) {
@@ -65,32 +62,8 @@ MoveResult Carousel::onMove(Direction dir, const size_t index, const size_t coun
   }
 }
 
-RenderData Grid::calculate(const StyleContext &ctx, const Vector2D &surfaceSize) const {
-  const int rows = (ctx.count + cols - 1) / cols;
-  const int curRow = ctx.index / cols;
-  const int curCol = ctx.index % cols;
-  const float gridWidth = ctx.mSize.x * Config::carouselSize;
-  const Vector2D slot{gridWidth / cols, ctx.mSize.y * Config::carouselSize};
-  const float baseScale = std::min(ctx.mSize.x, ctx.mSize.y) * Config::windowSize;
-  const float focusWeight = (ctx.index == ctx.activeIndex) ? 1.0f : 0.0f;
-  const float scale = Config::windowSizeInactive * std::lerp(1.0f, Config::windowSizeActive, focusWeight * ctx.scale);
-  const float aspect = (surfaceSize.y > 0) ? surfaceSize.x / surfaceSize.y : 1.77f;
-  Vector2D size = {baseScale * aspect * scale, baseScale * scale};
-  const float gridStart = (ctx.mSize.x - gridWidth) / 2.0f;
-
-  const Vector2D cCenter = {gridStart + (slot.x * curCol) + (slot.x / 2), (slot.y * curRow) + (slot.y / 2) + ctx.offset.y};
-  const Vector2D pos = cCenter - (size / 2.0f);
-
-  const float finalAlpha = std::lerp(Config::unfocusedAlpha, 1.0f, focusWeight) * ctx.alpha;
-  const CBox box{pos, size};
-
-  return {
-      .visible = finalAlpha > 0.01f,
-      .z = focusWeight, // Focused window stays on top
-      .rotation = 0.0f,
-      .scale = scale,
-      .alpha = std::clamp(finalAlpha, 0.0f, 1.0f),
-      .position = box};
+RenderData Grid::calculate(const StyleContext &ctx, const Vector2D &surfaceSize, const size_t index) const {
+  return {.visible = false};
 }
 
 MoveResult Grid::onMove(Direction dir, const size_t index, const size_t count) {
@@ -131,38 +104,8 @@ MoveResult Grid::onMove(Direction dir, const size_t index, const size_t count) {
   return {.index = (size_t)target};
 }
 
-RenderData Slide::calculate(const StyleContext &ctx, const Vector2D &surfaceSize) const {
-  const float aspect = (surfaceSize.y > 0) ? surfaceSize.x / surfaceSize.y : 1.77f;
-  const float activeH = ctx.mSize.y * Config::windowSizeActive * Config::windowSize;
-  const float inactiveH = activeH * Config::windowSizeInactive;
-  const float stripLoc = (ctx.rotation - (M_PI / 2.0f)) / (2.0f * M_PI) * ctx.count;
-  const float dist = std::abs((float)ctx.index - stripLoc);
-  const float focusWeight = std::pow(std::max(0.0f, 1.0f - dist), 2.5f);
-  const float scale = std::lerp(1.0f, Config::windowSizeActive, focusWeight * ctx.scale);
-  const float h = inactiveH * scale;
-  const Vector2D size = {h * aspect, h};
-
-  float stripIndex = (ctx.rotation - (M_PI / 2.0f)) / (2.0f * M_PI) * ctx.count;
-
-  const float spacing = 1.2f;
-  const float slotWidth = (inactiveH * aspect) * spacing;
-  float xOffset = ((float)ctx.index - stripIndex) * slotWidth;
-
-  const Vector2D center = {ctx.mSize.x / 2.0f, (ctx.mSize.y / 2.0f) + ctx.offset.y};
-  const Vector2D pos = {
-      center.x + xOffset - (size.x / 2.0f),
-      center.y - (size.y / 2.0f)};
-
-  const float finalAlpha = std::lerp(Config::unfocusedAlpha, 1.0f, focusWeight) * ctx.alpha;
-  const CBox box{pos, size};
-
-  return {
-      .visible = finalAlpha > 0.01f && box.overlaps({0, 0, ctx.mSize.x, ctx.mSize.y}),
-      .z = focusWeight,
-      .rotation = 0.0f,
-      .scale = h / activeH,
-      .alpha = std::clamp(finalAlpha, 0.0f, 1.0f),
-      .position = box};
+RenderData Slide::calculate(const StyleContext &ctx, const Vector2D &surfaceSize, const size_t index) const {
+  return {.visible = false};
 }
 
 MoveResult Slide::onMove(Direction dir, const size_t index, const size_t count) {

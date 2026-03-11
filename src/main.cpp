@@ -1,8 +1,19 @@
 #include "defines.hpp"
 #include "manager.hpp"
+#include <hyprutils/memory/UniquePtr.hpp>
 #include <src/desktop/state/FocusState.hpp>
 #include <src/managers/input/InputManager.hpp>
+#include <src/plugins/HookSystem.hpp>
 #include <src/render/Renderer.hpp>
+
+// void renderWorkspace(PHLMONITOR pMonitor, PHLWORKSPACE pWorkspace, const Time::steady_tp& now, const CBox& geometry)
+CFunctionHook *workspacehookfn = nullptr;
+typedef void (*CWorkspaceManager_renderWorkspace)(void *self, PHLMONITOR pMonitor, PHLWORKSPACE pWorkspace, const Time::steady_tp &now, const CBox &geometry);
+
+void renderWorkspace(void *self, PHLMONITOR pMonitor, PHLWORKSPACE pWorkspace, const Time::steady_tp &now, const CBox &geometry) {
+  if (!manager->isActive() || !OVERRIDE_WORKSPACE)
+    ((CWorkspaceManager_renderWorkspace)workspacehookfn->m_original)(self, pMonitor, pWorkspace, now, geometry);
+}
 
 CFunctionHook *keyhookfn = nullptr;
 typedef bool (*CKeybindManager_onKeyEvent)(void *self, std::any &event, SP<IKeyboard> pKeyboard);
@@ -179,22 +190,43 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
   registerConfig();
 
   try {
-    auto keyhooklookup = HyprlandAPI::findFunctionsByName(PHANDLE, "onKeyEvent");
-    if (keyhooklookup.size() != 1) {
-      for (auto &f : keyhooklookup)
-        Log::logger->log(Log::ERR, "onKeyEvent found at {} :: sig: {}, demangled: {}", f.address, f.signature, f.demangled);
-      throw std::runtime_error("CKeybindManager::onKeyEvent not found");
-    }
-    keyhookfn = HyprlandAPI::createFunctionHook(PHANDLE, keyhooklookup[0].address, (void *)onKeyEvent);
-    if (!keyhookfn->hook())
-      throw std::runtime_error("Failed to hook CKeybindManager::onKeyEvent");
+    auto findAndHook = [&](const std::string &fn, const std::string &match, void *hookFn) {
+      auto lookup = HyprlandAPI::findFunctionsByName(PHANDLE, fn);
+      SFunctionMatch *fnMatch = nullptr;
+
+      if (lookup.size() != 1) {
+        for (auto &f : lookup) {
+          Log::logger->log(Log::ERR, "{} candidate at {}\nsig: {}\ndemangled: {}", fn, f.address, f.signature, f.demangled);
+          if (match.empty() || f.demangled.find(match) != std::string::npos) {
+            fnMatch = &f;
+            break;
+          }
+        }
+        if (!fnMatch)
+          throw std::runtime_error(fn + " not found");
+      } else {
+        fnMatch = &lookup[0];
+      }
+
+      auto hook = HyprlandAPI::createFunctionHook(PHANDLE, fnMatch->address, hookFn);
+      if (!hook->hook())
+        throw std::runtime_error("Failed to hook " + fn);
+
+      return hook;
+    };
+
+    workspacehookfn = findAndHook("renderWorkspace", "IHyprRenderer::renderWorkspace(", (void *)renderWorkspace);
+    keyhookfn = findAndHook("onKeyEvent", "", (void *)onKeyEvent);
+
   } catch (const std::exception &e) {
-    Log::logger->log(Log::ERR, "Failed to hook CKeybindManager::onKeyEvent: {}", e.what());
+    Log::logger->log(Log::ERR, "{}", e.what());
   }
 
   return {PLUGIN_NAME, PLUGIN_DESCRIPTION, PLUGIN_AUTHOR, PLUGIN_VERSION};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
+  keyhookfn = nullptr;
+  workspacehookfn = nullptr;
   manager.reset();
 }

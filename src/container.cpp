@@ -7,32 +7,14 @@
 #include <src/desktop/view/Window.hpp>
 #include <src/helpers/Color.hpp>
 #include <src/protocols/PresentationTime.hpp>
+#include <src/render/pass/BorderPassElement.hpp>
+#include <src/render/pass/TexPassElement.hpp>
+#define protected public
 #include <src/render/Renderer.hpp>
+#undef protected
 
 WindowCard::WindowCard(PHLWINDOW window) : window(window) {
-  attachListeners(window->resource());
-  lastCommit = lastSnapshot = NOW;
-}
-
-WindowCard::~WindowCard() {
-  commit.clear();
-}
-
-void WindowCard::attachListeners(SP<CWLSurfaceResource> surface) {
-  if (!surface)
-    return;
-
-  surface->breadthfirst([this](SP<CWLSurfaceResource> s, const Vector2D &offset, void *data) {
-    commit.push_back(s->m_events.commit.listen([this] {
-      const auto since = NOW - this->lastCommit;
-      if (FloatTime(since).count() > 0.0016) {
-        LOG(Log::SNAPSHOT, "In commit for: {}, since: {}", this->window->m_title, FloatTime(since).count());
-        this->ready = false;
-        this->lastCommit = NOW;
-      }
-    }));
-  },
-                        nullptr);
+  ;
 }
 
 void WindowCard::setPosition(const CBox &position) {
@@ -43,132 +25,125 @@ CBox WindowCard::getPosition() const {
   return position;
 }
 
-void WindowCard::requestFrame(PHLMONITOR monitor) {
-  LOG(Log::SNAPSHOT, "{}: mapped: {}, ready: {}", window->m_title, window->resource()->m_mapped, ready);
-  if (!window->resource())
-    return;
-
-  window->resource()->breadthfirst([&](SP<CWLSurfaceResource> s, const Vector2D &offset, void *data) {
-    s->frame(NOW);
-    s->presentFeedback(NOW, monitor, false);
-  },
-                                   nullptr);
-}
-
-void WindowCard::draw(const CBox &box, const float scale, const float alpha = 1.0f) {
+void WindowCard::draw() {
   LOG_SCOPE(Log::DRAW);
+
   if (!window)
     return;
-  // whoops, almost went to infinity with low scales.
-  if (box.width <= 1.0f || box.height <= 1.0f)
-    return;
 
-  contentBox = box;
-  contentBox.round();
-  contentBox = contentBox.expand(-Config::borderSize * scale);
+  const auto MONITOR = Desktop::focusState()->monitor();
 
-  const auto padding = 4;
-  const auto barHeight = (Config::fontSize + padding) * scale;
+  const float scale = 1.0f;
+  const float alpha = 1.0f;
 
-  titleBox = {contentBox.x, contentBox.y, contentBox.width, barHeight};
-  previewBox = {contentBox.x, contentBox.y + barHeight, contentBox.width, contentBox.height - barHeight};
+  auto layout = buildLayout(scale);
 
-  drawTitle(box, scale, alpha);
-  drawBorder(alpha);
+  updateTitleTexture(scale);
 
-  auto texture = fb.getTexture();
-  if (texture) {
-    g_pHyprOpenGL->renderRect(previewBox, CHyprColor(0.0, 0.0, 0.0, 1.0 * alpha), {});
-    g_pHyprOpenGL->renderTexture(texture, previewBox, {.a = alpha});
+  {
+    CRectPassElement::SRectData rect;
+    rect.box = layout.title;
+    rect.color = {0, 0, 0, 0.8f * alpha};
+
+    g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(rect));
   }
+
+  {
+    CRectPassElement::SRectData rect;
+    rect.box = layout.preview;
+    rect.color = {0, 0, 0, alpha};
+
+    g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(rect));
+  }
+
+  {
+    CBorderPassElement::SBorderData border;
+    border.box = layout.outer;
+    border.grad1 = (isActive) ? *Config::activeBorderColor : *Config::inactiveBorderColor;
+    border.borderSize = Config::borderSize;
+    border.round = Config::borderRounding;
+    border.roundingPower = Config::borderRoundingPower;
+    g_pHyprRenderer->m_renderPass.add(makeUnique<CBorderPassElement>(border));
+  }
+
+  window->wlSurface()->resource()->breadthfirst(
+      [&](SP<CWLSurfaceResource> s, const Vector2D &offset, void *) {
+        if (!s->m_current.texture)
+          return;
+
+        CTexPassElement::SRenderData tex;
+        tex.tex = s->m_current.texture;
+        tex.box = {
+            layout.preview.pos() + offset,
+            layout.preview.size()};
+        tex.a = alpha;
+
+        g_pHyprRenderer->m_renderPass.add(makeUnique<CTexPassElement>(tex));
+
+        s->presentFeedback(NOW, MONITOR, true);
+      },
+      nullptr);
+
+  if (titleTexture) {
+
+    Vector2D size = titleTexture->m_size * scale;
+    Vector2D pos = layout.title.pos() + (layout.title.size() - size) * 0.5f;
+
+    CTexPassElement::SRenderData tex;
+    tex.tex = titleTexture;
+    tex.box = {pos, size};
+    tex.a = alpha;
+
+    g_pHyprRenderer->m_renderPass.add(makeUnique<CTexPassElement>(tex));
+  }
+
 #ifndef NDEBUG
-  // g_pHyprOpenGL->renderRect(contentBox, CHyprColor(1.0, 0.0, 0.0, 0.2), {});
-  g_pHyprOpenGL->renderRect(position, CHyprColor(1.0, 1.0, 0.0, 0.4), {});
-  auto text = g_pHyprOpenGL->renderText(std::format("Time: {} ms", std::chrono::duration_cast<std::chrono::milliseconds>(NOW - lastCommit).count()), CHyprColor(1.0, 1.0, 1.0, 1.0), 20);
-  g_pHyprOpenGL->renderTexture(text, {contentBox.pos(), text->m_size}, {.a = 1.0});
+  CRectPassElement::SRectData debug;
+  debug.box = position;
+  debug.color = {1.0, 1.0, 0.0, 0.1};
+  g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(debug));
 #endif
 }
 
-bool WindowCard::snapshot(const Vector2D &targetSize) {
-  LOG_SCOPE(Log::SNAPSHOT);
-  if (!window || !window->wlSurface() || !window->wlSurface()->resource()) {
-    LOG(Log::SNAPSHOT, "No window or surface");
-    return false;
-  }
-  if (targetSize.x <= 1 || targetSize.y <= 1) {
-    LOG(Log::SNAPSHOT, "targetSize.x ({}) <= 1 || targetSize.y ({}) <= 1", targetSize.x, targetSize.y);
-    return false;
-  }
+CardLayout WindowCard::buildLayout(float scale) {
+  CardLayout l;
 
-  if (targetSize.x <= 1 || targetSize.y <= 1)
-    return false;
+  l.outer = position;
+  l.outer.round();
 
-  const auto resource = window->wlSurface()->resource();
-  if (!resource->m_current.updated.all && !firstSnapshot)
-    return false;
-  if (firstSnapshot)
-    firstSnapshot = false;
+  l.content = l.outer.expand(-Config::borderSize * scale);
 
-  const auto MONITOR = Desktop::focusState()->monitor();
-  auto surfaceSize = window->wlSurface()->getSurfaceBoxGlobal().value_or({0, 0, 0, 0}).size();
-  CRegion fakeDamage = CBox{{0, 0}, targetSize};
+  const float padding = 4;
+  const float barHeight = (Config::fontSize + padding) * scale;
 
-  if (surfaceSize.x < 1.0 || surfaceSize.y < 1.0) {
-    Log::logger->log(Log::ERR, "[{}] WindowSnapshot::update, invalid surface size: {}", PLUGIN_NAME, surfaceSize);
-    return false;
-  }
+  l.title = {
+      l.content.x,
+      l.content.y,
+      l.content.width,
+      barHeight};
 
-  if (targetSize > fb.m_size) {
-    fb.alloc(targetSize.x, targetSize.y, MONITOR->m_output->state->state().drmFormat);
-  }
+  l.preview = {
+      l.content.x,
+      l.content.y + barHeight,
+      l.content.width,
+      l.content.height - barHeight};
 
-  g_pHyprRenderer->makeEGLCurrent();
-
-  if (!g_pHyprRenderer->beginRender(MONITOR, fakeDamage, RENDER_MODE_FULL_FAKE, nullptr, &fb)) {
-    return false;
-  }
-
-  g_pHyprOpenGL->clear(CHyprColor{0, 0, 0, 1.0f});
-
-  const double scale = std::min(fb.m_size.x / surfaceSize.x, fb.m_size.y / surfaceSize.y);
-  g_pHyprRenderer->m_bBlockSurfaceFeedback = true;
-  resource->breadthfirst([&](SP<CWLSurfaceResource> s, const Vector2D &offset, void *) {
-    if (!s->m_current.texture)
-      return;
-    auto box = s->extends();
-    box.scale(scale).translate(offset * scale);
-    g_pHyprOpenGL->renderTexture(s->m_current.texture, box, {.a = 1.0f});
-  },
-                         nullptr);
-
-  g_pHyprRenderer->m_bBlockSurfaceFeedback = false;
-  g_pHyprRenderer->endRender();
-  lastSnapshot = NOW;
-  ready = true;
-  return true;
+  return l;
 }
 
-void WindowCard::drawTitle(const CBox &box, const float scale, const float alpha) {
-  float baseWidth = box.width / scale;
-  float padding = 10.0f;
+void WindowCard::updateTitleTexture(float scale) {
 
-  if (window->m_title != title) {
-    title = window->m_title;
-    int maxChars = std::max(5.0f, (float)((baseWidth - padding) / (Config::fontSize * 0.55f)));
-    std::string displayTitle = middleTruncate(title, maxChars);
-    titleTexture = g_pHyprOpenGL->renderText(displayTitle, CHyprColor(1.0, 1.0, 1.0, 1.0), Config::fontSize);
-  }
+  float baseWidth = position.width / scale;
+  float padding = 10.f;
 
-  g_pHyprOpenGL->renderRect(titleBox, CHyprColor(0.0, 0.0, 0.0, 0.8 * alpha), {});
-
-  if (!titleTexture)
+  if (window->m_title == title)
     return;
 
-  Vector2D dSize = titleTexture->m_size * scale;
-  Vector2D dPos = titleBox.pos() + (titleBox.size() - dSize) * 0.5f;
-  g_pHyprOpenGL->renderTexture(titleTexture, {dPos, dSize}, {.a = alpha});
-}
+  title = window->m_title;
 
-void WindowCard::drawBorder(const float alpha) {
-  g_pHyprOpenGL->renderBorder(contentBox, isActive ? *Config::activeBorderColor : *Config::inactiveBorderColor, {.round = (int)Config::borderRounding, .roundingPower = Config::borderRoundingPower, .borderSize = (int)Config::borderSize, .a = alpha});
+  int maxChars = std::max(
+      5.0f,
+      (float)((baseWidth - padding) / (Config::fontSize * 0.55f)));
+  auto display = middleTruncate(title, maxChars);
+  titleTexture = g_pHyprRenderer->renderText(display, CHyprColor(1, 1, 1, 1), Config::fontSize);
 }

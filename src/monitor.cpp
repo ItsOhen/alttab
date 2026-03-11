@@ -1,20 +1,26 @@
-#include "monitor.hpp"
 #include "defines.hpp"
 #include "logger.hpp"
+
+#define protected public
+#include <src/render/OpenGL.hpp>
+#include <src/render/Renderer.hpp>
+#undef private
+
 #include "manager.hpp"
+#include "monitor.hpp"
+
 #include <src/Compositor.hpp>
 #include <src/desktop/state/FocusState.hpp>
 #include <src/desktop/view/Window.hpp>
 #include <src/render/pass/RectPassElement.hpp>
 #include <src/render/pass/TexPassElement.hpp>
-#define private public
-#include <src/render/OpenGL.hpp>
-#include <src/render/Renderer.hpp>
-#undef private
 
 #include <src/protocols/PresentationTime.hpp>
 
-Monitor::Monitor(PHLMONITOR monitor) : monitor(monitor) {
+Monitor::Monitor(PHLMONITOR monitor) : monitor(monitor),
+                                       alpha(Config::monitorAnimationSpeed),
+                                       rotation(Config::rotationSpeed),
+                                       zoom(Config::monitorAnimationSpeed) {
   createTexture();
   rotation.snap(M_PI / 2.0f);
   if (isActive()) {
@@ -24,32 +30,32 @@ Monitor::Monitor(PHLMONITOR monitor) : monitor(monitor) {
     zoom.snap(0.1f);
     alpha.snap(0.1f);
   }
-
-  animating = false;
 }
 void Monitor::createTexture() {
   LOG_SCOPE()
-  g_pHyprRenderer->makeEGLCurrent();
-
+  bgFb = g_pHyprRenderer->createFB();
+  blurFb = g_pHyprRenderer->createFB();
   if (monitor->m_pixelSize.x <= 0 || monitor->m_pixelSize.y <= 0)
     return;
 
-  if (!bgFb.isAllocated() || bgFb.m_size != monitor->m_pixelSize)
-    bgFb.alloc(monitor->m_pixelSize.x, monitor->m_pixelSize.y, monitor->m_drmFormat);
+  if (!bgFb->isAllocated() || bgFb->m_size != monitor->m_pixelSize)
+    bgFb->alloc(monitor->m_pixelSize.x, monitor->m_pixelSize.y, monitor->m_drmFormat);
   CRegion fullRegion = CBox({0, 0}, monitor->m_pixelSize);
 
-  g_pHyprRenderer->beginRender(monitor, fullRegion, RENDER_MODE_FULL_FAKE, nullptr, &bgFb, false);
+  OVERRIDE_WORKSPACE = false;
+  g_pHyprRenderer->beginFullFakeRender(monitor, fullRegion, bgFb);
   g_pHyprRenderer->renderWorkspace(monitor, monitor->m_activeWorkspace, NOW, fullRegion.getExtents());
   g_pHyprRenderer->m_renderPass.render(fullRegion);
   g_pHyprRenderer->m_renderPass.clear();
   g_pHyprRenderer->endRender();
-  texture = bgFb.getTexture();
+  OVERRIDE_WORKSPACE = true;
+  texture = bgFb->getTexture();
 
-  if (!blurFb.isAllocated() || blurFb.m_size != monitor->m_pixelSize / 2)
-    blurFb.alloc(monitor->m_pixelSize.x / 2, monitor->m_pixelSize.y / 2, monitor->m_drmFormat);
+  if (!blurFb->isAllocated() || blurFb->m_size != monitor->m_pixelSize / 2)
+    blurFb->alloc(monitor->m_pixelSize.x / 2, monitor->m_pixelSize.y / 2, monitor->m_drmFormat);
   CRegion blurRegion = CBox({0, 0}, monitor->m_pixelSize);
 
-  g_pHyprRenderer->beginRender(monitor, blurRegion, RENDER_MODE_FULL_FAKE, nullptr, &blurFb, false);
+  g_pHyprRenderer->beginFullFakeRender(monitor, blurRegion, blurFb);
 
   CBox destBox = {{0, 0}, monitor->m_pixelSize / 2};
   CTexPassElement::SRenderData data;
@@ -63,34 +69,16 @@ void Monitor::createTexture() {
   blur.blur = true;
   g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(blur));
 
-#ifndef NDEBUG
-  CRectPassElement::SRectData debug;
-  debug.box = destBox;
-  debug.color = {0.0, 0.0, 1.0, 0.5};
-  g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(debug));
-#endif
+  // #ifndef NDEBUG
+  //   CRectPassElement::SRectData debug;
+  //   debug.box = destBox;
+  //   debug.color = {0.0, 0.0, 1.0, 0.1};
+  //   g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(debug));
+  // #endif
   g_pHyprRenderer->m_renderPass.render(blurRegion);
   g_pHyprRenderer->m_renderPass.clear();
   g_pHyprRenderer->endRender();
-  blurred = blurFb.getTexture();
-}
-
-void Monitor::renderTexture(const CRegion &damage) {
-  if (!blurred || !texture || !monitor) {
-    LOG(Log::DRAW, "FAILED: (!blurred || !texture || !monitor)");
-    return;
-  }
-
-  auto dmg = damage;
-  const auto box = CBox{{0, 0}, monitor->m_pixelSize};
-  /* Need a better way to do this
-    if (DIMENABLED)
-    g_pHyprOpenGL->renderRect(dmg.getExtents(), {0, 0, 0, DIMAMOUNT}, {});
-  */
-  if (Config::blurBG)
-    g_pHyprOpenGL->renderTexture(blurred, box, {});
-  else if (Config::powersave)
-    g_pHyprOpenGL->renderTexture(texture, box, {});
+  blurred = blurFb->getTexture();
 }
 
 WP<WindowCard> Monitor::addWindow(PHLWINDOW window) {
@@ -105,35 +93,50 @@ size_t Monitor::removeWindow(PHLWINDOW window) {
   return windows.size();
 }
 
-bool Monitor::animate(const float delta) {
-  LOG_SCOPE(Log::ANIMATE)
-  const auto active = isActive();
-  zoom.set(active ? 1.0f : 0.1f, false);
-  alpha.set(active ? 1.0f : 0.1f, false);
-  rotation.tick(delta, Config::rotationSpeed);
-  zoom.tick(delta, Config::monitorAnimationSpeed);
-  alpha.tick(delta, Config::monitorAnimationSpeed);
-  return !rotation.done() || !zoom.done() || !alpha.done();
-}
-
-void Monitor::update(const float delta, const Vector2D &offset) {
+void Monitor::update(const float delta, const Vector2D &offset, CRegion &damage) {
   LOG_SCOPE(Log::UPDATE)
   const auto MONITOR = Desktop::focusState()->monitor();
-  const Vector2D mSize = MONITOR->m_size * MONITOR->m_scale;
 
-  bool damage = animate(delta);
+  zoom.set(isActive() ? 1.0f : 0.1f, false);
+  alpha.set(isActive() ? 1.0f : 0.1f, false);
+
+  const float invCount = 1.0f / sc<float>(windows.size());
+  const float r = (MONITOR->m_size.x * 0.5f) * Config::carouselSize;
+
+  auto ctx = StyleContext{
+      .count = windows.size(),
+      .invCount = invCount,
+      .angleStep = (2.0f * (float)M_PI) * invCount,
+      .mSize = MONITOR->m_size,
+      .midpoint = {MONITOR->m_size.x * 0.5f, MONITOR->m_size.y * 0.5f},
+      .offset = offset,
+      .radius = r,
+      .tiltOffset = r * std::sin(Config::tilt * ((float)M_PI / 180.0f)),
+      .rotation = rotation.current,
+      .scale = zoom.current,
+      .alpha = alpha.current};
+
   renderTasks.clear();
-
   for (size_t i = 0; i < windows.size(); ++i) {
-    auto ctx = StyleContext{i, windows.size(), activeWindow, rotation.current, zoom.current, alpha.current, mSize, {0, 0}};
-    auto surfaceSize = windows[i]->window->wlSurface()->getSurfaceBoxGlobal().value_or(CBox{0, 0, 0, 0}).size();
-    auto data = manager->layoutStyle->calculate(ctx, surfaceSize);
-    auto pos = data.position;
-    pos.translate(offset);
-    windows[i]->setPosition(pos);
+    if (!windows[i] || !windows[i]->window)
+      continue;
+
+    Vector2D surfaceSize = windows[i]->window->m_size;
+    RenderData data = manager->layoutStyle->calculate(ctx, surfaceSize, i);
+
     if (!data.visible)
       continue;
-    renderTasks.emplace_back(RenderTask{windows[i].get(), data, 0.0f, FloatTime(NOW - windows[i]->lastSnapshot).count()});
+
+    data.position.translate(offset);
+    data.position.round();
+    windows[i]->setPosition(data.position);
+    LOG(Log::UPDATE, "Data: {} Position: pos {} size {} Visible: {}", data.visible, data.position.pos(), data.position.size(), data.visible);
+
+    renderTasks.emplace_back(RenderTask{
+        windows[i].get(),
+        data,
+        0.0f,
+    });
   }
 
   std::sort(renderTasks.begin(), renderTasks.end(), [](const auto &a, const auto &b) {
@@ -141,8 +144,7 @@ void Monitor::update(const float delta, const Vector2D &offset) {
   });
 
   CRegion usedArea;
-  std::vector<RenderTask *> snapshotRR;
-
+  bool animating = rotation.done() || zoom.done() || alpha.done();
   for (auto &task : renderTasks) {
     CRegion visible = CRegion(task.data.position).subtract(usedArea);
     if (visible.empty())
@@ -153,41 +155,16 @@ void Monitor::update(const float delta, const Vector2D &offset) {
     });
 
     task.visibility = std::clamp((float)(area / (task.data.position.width * task.data.position.height)), 0.0f, 1.0f);
-    if ((task.visibility > 0.20f || task.card->firstSnapshot) && (!task.card->ready || task.since > 0.5f)) {
-      snapshotRR.emplace_back(&task);
-    }
+    // not worth the trouble.
+    // if (!task.card->window->wlSurface()->resource()->m_current.damage.empty() || animating)
     usedArea.add(task.data.position);
   }
 
-  std::sort(snapshotRR.begin(), snapshotRR.end(), [](const RenderTask *a, const RenderTask *b) {
-    if (a->card->firstSnapshot != b->card->firstSnapshot)
-      return a->card->firstSnapshot;
-
-    if (a->card->z != b->card->z)
-      return a->card->z > b->card->z;
-
-    return a->since > b->since;
-  });
-
-  int snapshotsDone = 0;
-  for (auto *task : snapshotRR) {
-    if (snapshotsDone >= 4)
-      break;
-
-    task->card->requestFrame(MONITOR);
-    bool updated = task->card->snapshot(mSize * Config::windowSize);
-    if (updated) {
-      snapshotsDone++;
-      damage = true;
-    } else if (!task->card->firstSnapshot) {
-      task->card->lastSnapshot = NOW;
-    }
-  }
-
-  animating = damage;
+  damage.add(usedArea);
 }
 
 void Monitor::draw(const CRegion &damage, const float alpha) {
+  LOG_SCOPE(Log::DRAW)
   const auto FOCUS = Desktop::focusState()->monitor();
   const Vector2D renderOffset = FOCUS->m_position * FOCUS->m_scale;
 
@@ -195,12 +172,7 @@ void Monitor::draw(const CRegion &damage, const float alpha) {
     auto &task = *taskIt;
     if (!task.card)
       continue;
-    CBox box = task.card->getPosition();
-
-    box.x -= renderOffset.x;
-    box.y -= renderOffset.y;
-
-    task.card->draw(box, task.data.scale, std::min(task.data.alpha, alpha));
+    task.card->draw();
   }
 }
 

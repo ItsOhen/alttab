@@ -77,6 +77,9 @@ target_link_options(${PROJECT_NAME} PRIVATE
     $<$<CXX_COMPILER_ID:GNU>:-fno-gnu-unique>
 )
 
+# for lulz
+target_compile_options(alttab PRIVATE -march=native)
+
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     PLUGIN_NAME="${PROJECT_NAME}"
     PLUGIN_DESCRIPTION="${PROJECT_DESCRIPTION}"
