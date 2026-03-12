@@ -81,11 +81,11 @@ RenderData Grid::calculate(const StyleContext &ctx, const Vector2D &surfaceSize,
   const int activeRow = ctx.active / cols;
   const float activeY = topPadding + (activeRow * (slotH + spacing)) + (slotH / 2.0f);
   const float visibleH = ctx.mSize.y;
-  
+
   float scrollOffset = 0.0f;
   const float rowTop = activeRow * (slotH + spacing);
   const float rowBottom = rowTop + slotH;
-  
+
   if (activeRow > 0 && rowTop < scrollOffset) {
     scrollOffset = rowTop;
   } else if (rowBottom > visibleH) {
@@ -97,7 +97,7 @@ RenderData Grid::calculate(const StyleContext &ctx, const Vector2D &surfaceSize,
 
   const float isActive = index == ctx.active ? 1.0f : 0.0f;
   const float windowScale = isActive ? Config::GWSizeActive.value_or(1.0f) : Config::GWSizeInactive.value_or(1.0f);
-  
+
   const float winW = slotW * windowScale;
   const float winH = slotH * windowScale;
   Vector2D size = {winW, winH};
@@ -162,25 +162,28 @@ MoveResult Grid::onMove(Direction dir, const size_t index, const size_t count) {
 
 RenderData Slide::calculate(const StyleContext &ctx, const Vector2D &surfaceSize, const size_t index) const {
   const float aspect = (surfaceSize.y > 0) ? surfaceSize.x / surfaceSize.y : 1.77f;
-  const float activeH = ctx.mSize.y * Config::slideSizeActive.value_or(Config::windowSizeActive) * Config::slideSize.value_or(Config::windowSize);
-  const float inactiveH = activeH * Config::slideSizeInactive.value_or(Config::windowSizeInactive);
-  const float stripLoc = (ctx.rotation - (M_PI / 2.0f)) / (2.0f * M_PI) * ctx.count;
-  const float dist = std::abs((float)index - stripLoc);
-  const float focusWeight = std::pow(std::max(0.0f, 1.0f - dist), 2.5f);
-  const float scale = std::lerp(1.0f, Config::slideSizeActive.value_or(Config::windowSizeActive), focusWeight * ctx.scale);
-  const float h = inactiveH * scale;
-  const Vector2D size = {h * aspect, h};
+  const float activeH = ctx.mSize.y * Config::slideSizeActive.value_or(1.0f) * Config::windowSize;
+  const float inactiveH = activeH * Config::slideSizeInactive.value_or(1.0f);
 
   float stripIndex = (ctx.rotation - (M_PI / 2.0f)) / (2.0f * M_PI) * ctx.count;
 
-  const float spacing = 1.2f;
+  float visualSlot = (float)index;
+  if (index > ctx.count / 2) {
+    visualSlot -= (float)ctx.count;
+  }
+
+  float diff = visualSlot - stripIndex;
+  const float dist = std::abs(diff);
+  const float focusWeight = std::pow(std::max(0.0f, 1.0f - dist), 2.5f);
+  const float h = inactiveH * (1.0f + focusWeight * (Config::slideSizeActive.value_or(1.0f) - 1.0f));
+  const Vector2D size = {h * aspect, h};
+
+  const float spacing = Config::slideSize.value_or(1.2f);
   const float slotWidth = inactiveH * aspect * spacing;
-  float xOffset = ((float)index - stripIndex) * slotWidth;
+  float xOffset = diff * slotWidth;
 
   const Vector2D center = {ctx.mSize.x / 2.0f, (ctx.mSize.y / 2.0f) + ctx.offset.y};
-  const Vector2D pos = {
-      center.x + xOffset - (size.x / 2.0f),
-      center.y - (size.y / 2.0f)};
+  const Vector2D pos = {center.x + xOffset - (size.x / 2.0f), center.y - (size.y / 2.0f)};
 
   const float finalAlpha = std::lerp(Config::unfocusedAlpha, 1.0f, focusWeight) * ctx.alpha;
   const CBox box{pos, size};
@@ -198,11 +201,30 @@ MoveResult Slide::onMove(Direction dir, const size_t index, const size_t count) 
   if (dir == Direction::UP || dir == Direction::DOWN)
     return {.changeMonitor = true};
 
-  int step = (dir == Direction::LEFT) ? -1 : 1;
-  int target = index + step;
-
-  if (target < 0 || target >= count)
+  if (count <= 1)
     return {.index = index};
 
-  return {.index = target};
+  auto getSlot = [&](int idx) {
+    if (idx == 0)
+      return 0;
+    if (idx > (int)count / 2)
+      return idx - (int)count;
+    return idx;
+  };
+
+  auto getIndexFromSlot = [&](int slot) {
+    return slot < 0 ? slot + count : slot;
+  };
+
+  int currentSlot = getSlot(index);
+  int step = (dir == Direction::LEFT) ? -1 : 1;
+  int targetSlot = currentSlot + step;
+
+  int minSlot = (count % 2 == 0) ? -(int)count / 2 + 1 : -(int)count / 2;
+  int maxSlot = (int)count / 2;
+
+  if (targetSlot < minSlot || targetSlot > maxSlot)
+    return {.index = index};
+
+  return {.index = getIndexFromSlot(targetSlot)};
 }

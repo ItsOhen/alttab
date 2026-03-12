@@ -100,11 +100,15 @@ void Monitor::update(const float delta, const Vector2D &offset, CRegion &damage)
   zoom.set(isActive() ? 1.0f : 0.1f, false);
   alpha.set(isActive() ? 1.0f : 0.1f, false);
 
-  const float invCount = 1.0f / sc<float>(windows.size());
+  const size_t count = windows.size();
+  if (count == 0)
+    return;
+
+  const float invCount = 1.0f / sc<float>(count);
   const float r = (MONITOR->m_size.x * 0.5f) * Config::carouselSize;
 
   auto ctx = StyleContext{
-      .count = windows.size(),
+      .count = count,
       .active = activeWindow,
       .invCount = invCount,
       .angleStep = (2.0f * (float)M_PI) * invCount,
@@ -117,49 +121,49 @@ void Monitor::update(const float delta, const Vector2D &offset, CRegion &damage)
       .scale = zoom.current,
       .alpha = alpha.current};
 
+  const size_t winCount = windows.size();
   renderTasks.clear();
-  for (size_t i = 0; i < windows.size(); ++i) {
+  if (winCount > renderTasks.capacity())
+    renderTasks.reserve(winCount);
+
+  for (size_t i = 0; i < winCount; ++i) {
     if (!windows[i] || !windows[i]->window)
       continue;
 
-    Vector2D surfaceSize = windows[i]->window->m_size;
-    RenderData data = manager->layoutStyle->calculate(ctx, surfaceSize, i);
-
+    RenderData data = manager->layoutStyle->calculate(ctx, windows[i]->window->m_size, i);
     if (!data.visible)
       continue;
 
-    data.position.translate(offset);
-    data.position.round();
+    data.position.translate(offset).round();
     windows[i]->setPosition(data.position);
-    LOG(Log::UPDATE, "Data: {} Position: pos {} size {} Visible: {}", data.visible, data.position.pos(), data.position.size(), data.visible);
 
-    renderTasks.emplace_back(RenderTask{
-        windows[i].get(),
-        data,
-        0.0f,
-    });
+    // Ensure Active is always highest Z for visibility priority
+    if (i == 0)
+      data.z = 1000.0f;
+
+    renderTasks.emplace_back(RenderTask{windows[i].get(), data, 0.0f});
   }
 
-  std::sort(renderTasks.begin(), renderTasks.end(), [](const auto &a, const auto &b) {
+  std::stable_sort(renderTasks.begin(), renderTasks.end(), [](const auto &a, const auto &b) {
     return a.data.z > b.data.z;
   });
 
   CRegion usedArea;
   for (auto &task : renderTasks) {
     CRegion visible = CRegion(task.data.position).subtract(usedArea);
-    if (visible.empty())
+    if (visible.empty()) {
+      task.visibility = 0.0f;
       continue;
+    }
+
     double area = 0;
     visible.forEachRect([&area](const pixman_box32_t &r) {
       area += (double)(r.x2 - r.x1) * (r.y2 - r.y1);
     });
 
     task.visibility = std::clamp((float)(area / (task.data.position.width * task.data.position.height)), 0.0f, 1.0f);
-    // not worth the trouble.
-    // if (!task.card->window->wlSurface()->resource()->m_current.damage.empty() || animating)
     usedArea.add(task.data.position);
   }
-
   damage.add(usedArea);
 }
 
