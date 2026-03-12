@@ -54,7 +54,8 @@ enum class Direction : uint8_t {
   X(FLOAT, CWSize, "carousel:window_size")      \
   X(FLOAT, CWSizeActive, "carousel:active")     \
   X(FLOAT, CWSizeInactive, "carousel:inactive") \
-  X(FLOAT, gridSize, "grid:columns")            \
+  X(FLOAT, gridSize, "grid:size")               \
+  X(FLOAT, gridColumns, "grid:columns")         \
   X(FLOAT, GWSize, "grid:window_size")          \
   X(FLOAT, GWSizeActive, "grid:active")         \
   X(FLOAT, GWSizeInactive, "grid:inactive")     \

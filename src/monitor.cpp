@@ -105,6 +105,7 @@ void Monitor::update(const float delta, const Vector2D &offset, CRegion &damage)
 
   auto ctx = StyleContext{
       .count = windows.size(),
+      .active = activeWindow,
       .invCount = invCount,
       .angleStep = (2.0f * (float)M_PI) * invCount,
       .mSize = MONITOR->m_size,

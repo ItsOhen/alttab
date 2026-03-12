@@ -68,13 +68,64 @@ MoveResult Carousel::onMove(Direction dir, const size_t index, const size_t coun
 }
 
 RenderData Grid::calculate(const StyleContext &ctx, const Vector2D &surfaceSize, const size_t index) const {
-  return {.visible = false};
+  const int cols = (int)Config::gridColumns.value_or((float)columns);
+  const int rows = (ctx.count + cols - 1) / cols;
+  const float spacing = Config::gridSpacing.value_or(0.0f);
+  const float topPadding = spacing > 0 ? spacing * ctx.mSize.y : ctx.mSize.y * 0.1f;
+
+  const float gridW = ctx.mSize.x * Config::gridSize.value_or(0.8f);
+
+  const float slotW = (gridW - (spacing * (cols + 1))) / cols;
+  const float slotH = ctx.mSize.y * Config::GWSize.value_or(Config::windowSize);
+
+  const int activeRow = ctx.active / cols;
+  const float activeY = topPadding + (activeRow * (slotH + spacing)) + (slotH / 2.0f);
+  const float visibleH = ctx.mSize.y;
+  
+  float scrollOffset = 0.0f;
+  const float rowTop = activeRow * (slotH + spacing);
+  const float rowBottom = rowTop + slotH;
+  
+  if (activeRow > 0 && rowTop < scrollOffset) {
+    scrollOffset = rowTop;
+  } else if (rowBottom > visibleH) {
+    scrollOffset = rowBottom - visibleH;
+  }
+
+  const int curRow = (int)(index / cols);
+  const int curCol = (int)(index % cols);
+
+  const float isActive = index == ctx.active ? 1.0f : 0.0f;
+  const float windowScale = isActive ? Config::GWSizeActive.value_or(1.0f) : Config::GWSizeInactive.value_or(1.0f);
+  
+  const float winW = slotW * windowScale;
+  const float winH = slotH * windowScale;
+  Vector2D size = {winW, winH};
+
+  const float gridStartX = (ctx.mSize.x - gridW) / 2.0f;
+
+  const float x = gridStartX + spacing + (curCol * (slotW + spacing)) + (slotW / 2.0f);
+  const float y = topPadding + ((curRow * (slotH + spacing)) - scrollOffset) + (slotH / 2.0f);
+
+  const Vector2D pos = {x - (size.x / 2.0f), y - (size.y / 2.0f)};
+
+  const float finalAlpha = std::lerp(Config::unfocusedAlpha, 1.0f, isActive) * ctx.alpha;
+  const CBox box{pos, size};
+
+  return {
+      .visible = finalAlpha > 0.01f,
+      .z = isActive,
+      .rotation = 0.0f,
+      .scale = windowScale,
+      .alpha = std::clamp(finalAlpha, 0.0f, 1.0f),
+      .position = box};
 }
 
 MoveResult Grid::onMove(Direction dir, const size_t index, const size_t count) {
   if (count == 0)
     return {.changeMonitor = true};
 
+  const int cols = (int)Config::gridColumns.value_or((float)columns);
   const int rows = (count + cols - 1) / cols;
   int curRow = index / cols;
   int curCol = index % cols;
@@ -110,7 +161,37 @@ MoveResult Grid::onMove(Direction dir, const size_t index, const size_t count) {
 }
 
 RenderData Slide::calculate(const StyleContext &ctx, const Vector2D &surfaceSize, const size_t index) const {
-  return {.visible = false};
+  const float aspect = (surfaceSize.y > 0) ? surfaceSize.x / surfaceSize.y : 1.77f;
+  const float activeH = ctx.mSize.y * Config::slideSizeActive.value_or(Config::windowSizeActive) * Config::slideSize.value_or(Config::windowSize);
+  const float inactiveH = activeH * Config::slideSizeInactive.value_or(Config::windowSizeInactive);
+  const float stripLoc = (ctx.rotation - (M_PI / 2.0f)) / (2.0f * M_PI) * ctx.count;
+  const float dist = std::abs((float)index - stripLoc);
+  const float focusWeight = std::pow(std::max(0.0f, 1.0f - dist), 2.5f);
+  const float scale = std::lerp(1.0f, Config::slideSizeActive.value_or(Config::windowSizeActive), focusWeight * ctx.scale);
+  const float h = inactiveH * scale;
+  const Vector2D size = {h * aspect, h};
+
+  float stripIndex = (ctx.rotation - (M_PI / 2.0f)) / (2.0f * M_PI) * ctx.count;
+
+  const float spacing = 1.2f;
+  const float slotWidth = inactiveH * aspect * spacing;
+  float xOffset = ((float)index - stripIndex) * slotWidth;
+
+  const Vector2D center = {ctx.mSize.x / 2.0f, (ctx.mSize.y / 2.0f) + ctx.offset.y};
+  const Vector2D pos = {
+      center.x + xOffset - (size.x / 2.0f),
+      center.y - (size.y / 2.0f)};
+
+  const float finalAlpha = std::lerp(Config::unfocusedAlpha, 1.0f, focusWeight) * ctx.alpha;
+  const CBox box{pos, size};
+
+  return {
+      .visible = finalAlpha > 0.01f && box.overlaps({0, 0, ctx.mSize.x, ctx.mSize.y}),
+      .z = focusWeight,
+      .rotation = 0.0f,
+      .scale = h / activeH,
+      .alpha = std::clamp(finalAlpha, 0.0f, 1.0f),
+      .position = box};
 }
 
 MoveResult Slide::onMove(Direction dir, const size_t index, const size_t count) {

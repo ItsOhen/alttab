@@ -4,6 +4,7 @@
 
 struct StyleContext {
   size_t count;
+  size_t active;
   float invCount;
   float angleStep;
   Vector2D mSize;
@@ -47,7 +48,7 @@ public:
   MoveResult onMove(Direction dir, const size_t index, const size_t count) override;
 
 private:
-  const int cols = 4;
+  const int columns = 4;
 };
 
 class Slide : public IStyle {
