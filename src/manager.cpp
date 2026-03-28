@@ -414,7 +414,7 @@ void Manager::onMouseClick(const IPointer::SButtonEvent button) {
   const auto mousePos = g_pInputManager->getMouseCoordsInternal();
   const auto MONITOR = Desktop::focusState()->monitor();
 
-  const Vector2D localMouse = (mousePos - MONITOR->m_position) * MONITOR->m_scale;
+  const Vector2D localMouse = (mousePos - MONITOR->m_position);
 
   for (auto it = stack.begin(); it != stack.end(); ++it) {
     auto *mon = it->monitor;
