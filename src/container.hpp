@@ -34,6 +34,7 @@ public:
   bool isActive = false;
   bool firstSnapshot = true;
   CBox lastBox;
+  float lastBaseWidth = -1.f;
 
 private:
   void updateTitleTexture(float scale);

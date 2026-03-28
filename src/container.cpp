@@ -141,9 +141,10 @@ void WindowCard::updateTitleTexture(float scale) {
   float baseWidth = position.width / scale;
   float padding = 10.f;
 
-  if (window->m_title == title)
+  if (window->m_title == title && std::abs(lastBaseWidth - baseWidth) < 1.f)
     return;
 
+  lastBaseWidth = baseWidth;
   title = window->m_title;
 
   int maxChars = std::max(
