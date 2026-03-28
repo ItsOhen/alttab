@@ -1,5 +1,6 @@
 #include "logger.hpp"
 #include <any>
+#include <src/render/pass/TexPassElement.hpp>
 #define private public
 #include <src/render/OpenGL.hpp>
 #include <src/render/Renderer.hpp>
@@ -24,9 +25,18 @@ void DebugText::draw(PHLMONITOR monitor) {
     return;
 
   Vector2D logicalSize = tex->m_size * monitor->m_scale;
-  CBox textBox = {{10, 10}, logicalSize};
-  g_pHyprOpenGL->renderRect(textBox, {0, 0, 0, 0.6}, {});
-  g_pHyprOpenGL->renderTexture(tex, textBox, {.a = 1.0});
+  auto rect = CRectPassElement::SRectData{
+      .box = {{10, 10}, logicalSize},
+      .color = {0, 0, 0, 0.6},
+      .blur = false};
+
+  auto text = CTexPassElement::SRenderData{
+      .tex = tex,
+      .box = {{0, 0}, logicalSize},
+      .a = 1.0f};
+
+  g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(rect));
+  g_pHyprRenderer->m_renderPass.add(makeUnique<CTexPassElement>(text));
 
   m_sBuffer.clear();
 }

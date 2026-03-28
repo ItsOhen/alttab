@@ -33,7 +33,7 @@ void WindowCard::draw() {
 
   const auto MONITOR = Desktop::focusState()->monitor();
 
-  const float scale = 1.0f;
+  const float scale = MONITOR->m_scale;
   const float alpha = 1.0f;
 
   auto layout = buildLayout(scale);
@@ -74,7 +74,7 @@ void WindowCard::draw() {
         CTexPassElement::SRenderData tex;
         tex.tex = s->m_current.texture;
         tex.box = {
-            layout.preview.pos() + offset,
+            layout.preview.pos() + (offset * scale),
             layout.preview.size()};
         tex.a = alpha;
 
@@ -97,8 +97,8 @@ void WindowCard::draw() {
 
 #ifndef NDEBUG
   CRectPassElement::SRectData debug;
-  debug.box = position;
-  debug.color = {1.0, 1.0, 0.0, 0.1};
+  debug.box = layout.outer.copy();
+  debug.color = {0.0, 0.0, 1.0, 0.1};
   g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(debug));
 #endif
 }
@@ -112,11 +112,11 @@ void WindowCard::present() {
 
 CardLayout WindowCard::buildLayout(float scale) {
   CardLayout l;
-
   l.outer = position;
   l.outer.round();
+  l.outer.scale(scale);
 
-  l.content = l.outer.expand(-Config::borderSize * scale);
+  l.content = l.outer.expand(-Config::borderSize);
 
   const float padding = 4;
   const float barHeight = (Config::fontSize + padding) * scale;

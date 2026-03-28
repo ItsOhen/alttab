@@ -27,6 +27,8 @@ static int counter = 0;
 static int lastCounter = 0;
 #endif
 
+using namespace alttab;
+
 Manager::Manager() : monitorOffset(&Config::monitorAnimationSpeed),
                      monitorFade(&Config::monitorFade) {
   LOG_SCOPE()
@@ -185,11 +187,13 @@ void Manager::update(float delta) {
   CRegion damage;
   int i = 0;
   for (auto &[id, mon] : monitors) {
+    CRegion mDamage;
     float off = (i - monitorOffset.current) * spacing;
-    mon->position = {monitorPos.x, monitorPos.y + off, MONITOR->m_size.x, MONITOR->m_size.y};
+    mon->position = {monitorPos.x, monitorPos.y + off, MONITOR->m_pixelSize.x, MONITOR->m_pixelSize.y};
     float z = (id == activeMonitor) ? 1000.0f : -std::abs(i - monitorOffset.current);
     if (animating)
-      mon->update(delta, {monitorPos.x, monitorPos.y + off}, damage);
+      mon->update(delta, off, mDamage);
+    damage.add(mDamage);
     i++;
     stack.push_back({.monitor = mon.get(), .offset = off, .z = z});
   }
@@ -252,7 +256,7 @@ void Manager::renderBackground(MONITORID monid, const CRegion &damage) {
     return;
 
   auto tex = (Config::blurBG) ? mon->blurred : mon->texture;
-  const auto box = CBox{{}, mon->monitor->m_size};
+  const auto box = CBox{{}, mon->monitor->m_pixelSize};
   CTexPassElement::SRenderData data;
   data.tex = tex;
   data.box = box;
@@ -279,18 +283,42 @@ void Manager::renderMonitors(const CRegion &damage) {
 }
 
 void Manager::onConfigReload() {
-#define X(type, name, conf, def) \
-  Config::name = *CConfigValue<Hyprlang::type>("plugin:alttab:" conf);
+  auto getConf = [&](const std::string &name) -> Hyprlang::CConfigValue * {
+    return HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:" + name);
+  };
+
+#define X(type, name, conf, def)                                     \
+  {                                                                  \
+    auto val = getConf(conf);                                        \
+    if (val)                                                         \
+      Config::name = std::any_cast<Hyprlang::type>(val->getValue()); \
+  }
   CONFIG_VARS
 #undef X
 
-#define X(type, name, conf) \
-  Config::name.get() = *CConfigValue<Hyprlang::type>("plugin:alttab:" conf);
+#define X(type, name, conf)                                                \
+  {                                                                        \
+    auto val = getConf(conf);                                              \
+    if (val)                                                               \
+      Config::name.get() = std::any_cast<Hyprlang::type>(val->getValue()); \
+  }
   CONFIG_VARS_OPTIONAL_FLOAT
 #undef X
 
-  Config::activeBorderColor = rc<CGradientValueData *>(std::any_cast<void *>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:border_active")->getValue()));
-  Config::inactiveBorderColor = rc<CGradientValueData *>(std::any_cast<void *>(HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:border_inactive")->getValue()));
+  auto getGradient = [&](const std::string &name) -> Config::CGradientValueData * {
+    auto val = HyprlandAPI::getConfigValue(PHANDLE, name);
+    if (!val || !val->getValue().has_value())
+      return nullptr;
+    try {
+      return sc<Config::CGradientValueData *>(std::any_cast<void *>(val->getValue()));
+    } catch (...) {
+      return nullptr;
+    }
+  };
+
+  Config::activeBorderColor = getGradient("plugin:alttab:border_active");
+  Config::inactiveBorderColor = getGradient("plugin:alttab:border_inactive");
+
   stack.clear();
 }
 

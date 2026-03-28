@@ -1,5 +1,6 @@
 #include "defines.hpp"
 #include "logger.hpp"
+#include <hyprutils/math/Vector2D.hpp>
 
 #define protected public
 #include <src/render/OpenGL.hpp>
@@ -17,10 +18,12 @@
 
 #include <src/protocols/PresentationTime.hpp>
 
-Monitor::Monitor(PHLMONITOR monitor) : monitor(monitor),
-                                       alpha(&Config::monitorAnimationSpeed),
-                                       rotation(&Config::rotationSpeed),
-                                       zoom(&Config::monitorAnimationSpeed) {
+using namespace alttab;
+
+alttab::Monitor::Monitor(PHLMONITOR monitor) : monitor(monitor),
+                                               alpha(&Config::monitorAnimationSpeed),
+                                               rotation(&Config::rotationSpeed),
+                                               zoom(&Config::monitorAnimationSpeed) {
   createTexture();
   rotation.snap(M_PI / 2.0f);
   if (isActive()) {
@@ -31,7 +34,7 @@ Monitor::Monitor(PHLMONITOR monitor) : monitor(monitor),
     alpha.snap(0.1f);
   }
 }
-void Monitor::createTexture() {
+void alttab::Monitor::createTexture() {
   LOG_SCOPE()
   bgFb = g_pHyprRenderer->createFB();
   blurFb = g_pHyprRenderer->createFB();
@@ -81,19 +84,19 @@ void Monitor::createTexture() {
   blurred = blurFb->getTexture();
 }
 
-WP<WindowCard> Monitor::addWindow(PHLWINDOW window) {
+WP<WindowCard> alttab::Monitor::addWindow(PHLWINDOW window) {
   auto w = makeUnique<WindowCard>(window);
   windows.emplace_back(std::move(w));
   return windows.back();
 }
-size_t Monitor::removeWindow(PHLWINDOW window) {
+size_t alttab::Monitor::removeWindow(PHLWINDOW window) {
   std::erase_if(windows, [&](const auto &card) {
     return card->window == window;
   });
   return windows.size();
 }
 
-void Monitor::update(const float delta, const Vector2D &offset, CRegion &damage) {
+void alttab::Monitor::update(const float delta, const float offset, CRegion &damage) {
   LOG_SCOPE(Log::UPDATE)
   const auto MONITOR = Desktop::focusState()->monitor();
 
@@ -105,7 +108,7 @@ void Monitor::update(const float delta, const Vector2D &offset, CRegion &damage)
     return;
 
   const float invCount = 1.0f / sc<float>(count);
-  const float r = (MONITOR->m_size.x * 0.5f) * Config::carouselSize;
+  const float r = (MONITOR->m_size.x * 0.5f) * Config::carouselSize.value_or(1.0f);
 
   auto ctx = StyleContext{
       .count = count,
@@ -113,8 +116,7 @@ void Monitor::update(const float delta, const Vector2D &offset, CRegion &damage)
       .invCount = invCount,
       .angleStep = (2.0f * (float)M_PI) * invCount,
       .mSize = MONITOR->m_size,
-      .midpoint = {MONITOR->m_size.x * 0.5f, MONITOR->m_size.y * 0.5f},
-      .offset = offset,
+      .midpoint = MONITOR->m_size * 0.5f,
       .radius = r,
       .tiltOffset = r * std::sin(Config::tilt * ((float)M_PI / 180.0f)),
       .rotation = rotation.current,
@@ -134,12 +136,8 @@ void Monitor::update(const float delta, const Vector2D &offset, CRegion &damage)
     if (!data.visible)
       continue;
 
-    data.position.translate(offset).round();
+    data.position.translate({0, (int)offset}).round();
     windows[i]->setPosition(data.position);
-
-    // Ensure Active is always highest Z for visibility priority
-    if (i == 0)
-      data.z = 1000.0f;
 
     renderTasks.emplace_back(RenderTask{windows[i].get(), data, 0.0f});
   }
@@ -162,15 +160,15 @@ void Monitor::update(const float delta, const Vector2D &offset, CRegion &damage)
     });
 
     task.visibility = std::clamp((float)(area / (task.data.position.width * task.data.position.height)), 0.0f, 1.0f);
-    usedArea.add(task.data.position);
+    CBox outerBox = task.data.position.copy();
+    outerBox.round();
+    outerBox.expand(Config::borderSize);
+    damage.add(outerBox.x, outerBox.y, outerBox.width, outerBox.height);
   }
-  damage.add(usedArea);
 }
 
-void Monitor::draw(const CRegion &damage, const float alpha) {
+void alttab::Monitor::draw(const CRegion &damage, const float alpha) {
   LOG_SCOPE(Log::DRAW)
-  const auto FOCUS = Desktop::focusState()->monitor();
-  const Vector2D renderOffset = FOCUS->m_position * FOCUS->m_scale;
 
   for (auto &task : renderTasks | std::views::reverse | std::views::filter([](auto &t) { return t.card; })) {
     task.card->draw();
@@ -179,7 +177,7 @@ void Monitor::draw(const CRegion &damage, const float alpha) {
   }
 }
 
-void Monitor::activeChanged() {
+void alttab::Monitor::activeChanged() {
   LOG_SCOPE()
   const int count = windows.size();
   if (count <= 0) {
@@ -201,7 +199,7 @@ void Monitor::activeChanged() {
   rotation.set(rotation.target + diff, false);
 }
 
-bool Monitor::isActive() const {
+bool alttab::Monitor::isActive() const {
   LOG_SCOPE()
   return manager->activeMonitor == monitor->m_id;
 }

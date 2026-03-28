@@ -9,7 +9,6 @@ struct StyleContext {
   float angleStep;
   Vector2D mSize;
   Vector2D midpoint;
-  Vector2D offset;
   float radius;
   float tiltOffset;
   float rotation, scale, alpha;

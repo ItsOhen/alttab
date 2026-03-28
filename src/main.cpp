@@ -1,6 +1,7 @@
 #include "defines.hpp"
 #include "manager.hpp"
 #include <hyprutils/memory/UniquePtr.hpp>
+#include <src/config/shared/complex/ComplexDataTypes.hpp>
 #include <src/desktop/state/FocusState.hpp>
 #include <src/managers/input/InputManager.hpp>
 #include <src/plugins/HookSystem.hpp>
@@ -86,11 +87,11 @@ inline Hyprlang::CParseResult configHandleGradientSet(const char *VALUE, void **
   std::string V = VALUE;
 
   if (!*data)
-    *data = new CGradientValueData();
+    *data = new Config::CGradientValueData();
 
-  const auto DATA = sc<CGradientValueData *>(*data);
+  const auto DATA = sc<Config::CGradientValueData *>(*data);
 
-  CVarList2 varlist(std::string(V), 0, ' ');
+  Hyprutils::String::CVarList2 varlist(std::string(V), 0, ' ');
   DATA->m_colors.clear();
 
   std::string parseError = "";
@@ -145,7 +146,7 @@ inline void configHandleGradientDestroy(void **data) {
   // if (unloadGuard)
   //   return;
   if (*data)
-    delete sc<CGradientValueData *>(*data);
+    delete sc<Config::CGradientValueData *>(*data);
 }
 
 void registerConfig() {
@@ -171,7 +172,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
   if (const std::string hash = __hyprland_api_get_hash(); hash != __hyprland_api_get_client_hash())
     throw std::runtime_error("Version mismatch");
 
-  manager = makeUnique<Manager>();
+  manager = makeUnique<alttab::Manager>();
   /* Maybe later.
     HyprlandAPI::addDispatcherV2(PHANDLE, "alttab", [&](std::string args) -> SDispatchResult {
       LOG_SCOPE()

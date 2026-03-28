@@ -7,6 +7,8 @@
 #include <src/render/Renderer.hpp>
 #include <src/render/pass/TexPassElement.hpp>
 
+namespace alttab {
+
 class Monitor {
 private:
   struct RenderTask {
@@ -23,7 +25,7 @@ public:
   void createTexture();
   WP<WindowCard> addWindow(PHLWINDOW window);
   size_t removeWindow(PHLWINDOW window);
-  void update(const float delta, const Vector2D &offset, CRegion &damage);
+  void update(const float delta, const float offset, CRegion &damage);
   void draw(const CRegion &damage, const float alpha);
   void activeChanged();
   bool isActive() const;
@@ -33,11 +35,13 @@ public:
   AnimatedValue<float> zoom;
   AnimatedValue<float> alpha;
   PHLMONITOR monitor;
-  SP<ITexture> texture;
-  SP<ITexture> blurred;
-  SP<IFramebuffer> bgFb, blurFb;
+  SP<Render::ITexture> texture;
+  SP<Render::ITexture> blurred;
+  SP<Render::IFramebuffer> bgFb, blurFb;
   size_t activeWindow = 0;
   std::vector<UP<WindowCard>> windows;
 
   friend class Manager;
 };
+
+} // namespace alttab

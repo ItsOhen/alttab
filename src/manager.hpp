@@ -11,6 +11,8 @@
 #include <src/render/pass/PassElement.hpp>
 #include <src/render/pass/SurfacePassElement.hpp>
 
+namespace alttab {
+
 class Manager {
 public:
   Manager();
@@ -39,7 +41,7 @@ private:
   void onMouseClick(const IPointer::SButtonEvent button);
 
   struct MonitorElement {
-    Monitor *monitor;
+    alttab::Monitor *monitor;
     float offset;
     float z;
   };
@@ -77,7 +79,7 @@ private:
   SP<CEventLoopTimer> graceTimer;
 
   Timestamp lastFrame;
-  std::map<MONITORID, UP<Monitor>> monitors;
+  std::map<MONITORID, UP<alttab::Monitor>> monitors;
   AnimatedValue<float> monitorOffset;
   AnimatedValue<float> monitorFade;
   Timestamp lastUpdate;
@@ -86,7 +88,9 @@ private:
   std::vector<MonitorElement> stack;
   CRegion previousFrameDamage;
 
-  friend class Monitor;
+  friend class alttab::Monitor;
 };
 
-inline UP<Manager> manager;
+} // namespace alttab
+
+inline UP<alttab::Manager> manager;
