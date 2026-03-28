@@ -65,8 +65,8 @@ MoveResult Carousel::onMove(Direction dir, const size_t index, const size_t coun
 RenderData Grid::calculate(const StyleContext &ctx, const Vector2D &surfaceSize, const size_t index) const {
   const int cols = (int)Config::gridColumns.value_or((float)columns);
   const int rows = (ctx.count + cols - 1) / cols;
-  const float spacing = Config::gridSpacing.value_or(0.0f);
-  const float topPadding = spacing > 0 ? spacing * ctx.mSize.y : ctx.mSize.y * 0.1f;
+  const float spacing = Config::gridSpacing.value_or(0.0f) * ctx.scale;
+  const float topPadding = spacing > 0 ? spacing : ctx.mSize.y * 0.1f * ctx.scale;
 
   const float gridW = ctx.mSize.x * Config::gridSize.value_or(0.8f);
 
@@ -91,7 +91,7 @@ RenderData Grid::calculate(const StyleContext &ctx, const Vector2D &surfaceSize,
   const int curCol = (int)(index % cols);
 
   const float isActive = index == ctx.active ? 1.0f : 0.0f;
-  const float windowScale = isActive ? Config::GWSizeActive.value_or(1.0f) : Config::GWSizeInactive.value_or(1.0f);
+  const float windowScale = isActive ? Config::GWSizeActive.value_or(Config::windowSizeActive) : Config::GWSizeInactive.value_or(Config::windowSizeInactive);
   const float finalScale = windowScale * ctx.scale;
 
   const float winW = slotW * finalScale;
@@ -158,7 +158,7 @@ MoveResult Grid::onMove(Direction dir, const size_t index, const size_t count) {
 
 RenderData Slide::calculate(const StyleContext &ctx, const Vector2D &surfaceSize, const size_t index) const {
   const float aspect = (surfaceSize.y > 0) ? surfaceSize.x / surfaceSize.y : 1.77f;
-  const float activeH = ctx.mSize.y * Config::slideSizeActive.value_or(1.0f) * Config::windowSize;
+  const float activeH = ctx.mSize.y * Config::slideSizeActive.value_or(Config::windowSizeActive) * Config::windowSize;
   const float inactiveH = activeH * Config::slideSizeInactive.value_or(1.0f);
 
   float stripIndex = (ctx.rotation - (M_PI / 2.0f)) / (2.0f * M_PI) * ctx.count;
@@ -175,8 +175,8 @@ RenderData Slide::calculate(const StyleContext &ctx, const Vector2D &surfaceSize
   const float finalScale = (h / activeH) * ctx.scale;
   const Vector2D size = {h * aspect, h};
 
-  const float spacing = Config::slideSize.value_or(1.2f);
-  const float slotWidth = inactiveH * aspect * spacing;
+  const float spacing = Config::slideSize.value_or(50.0f) * ctx.scale;
+  const float slotWidth = inactiveH * aspect + spacing;
   float xOffset = diff * slotWidth;
 
   const Vector2D center = {ctx.mSize.x / 2.0f, (ctx.mSize.y / 2.0f)};
