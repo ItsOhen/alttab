@@ -59,9 +59,10 @@ enum class Direction : uint8_t {
   X(FLOAT, GWSize, "grid:window_size")          \
   X(FLOAT, GWSizeActive, "grid:active")         \
   X(FLOAT, GWSizeInactive, "grid:inactive")     \
-  X(FLOAT, slideSize, "slide:spacing")          \
+  X(FLOAT, slideSize, "slide:window_size")      \
   X(FLOAT, slideSizeActive, "slide:active")     \
   X(FLOAT, slideSizeInactive, "slide:inactive") \
+  X(FLOAT, slideSpacing, "slide:spacing")       \
   X(FLOAT, gridSpacing, "grid:spacing")
 
 template <typename T>

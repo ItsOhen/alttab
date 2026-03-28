@@ -99,12 +99,12 @@ In `hyprland.conf`, under `plugin { alttab { ... } }`:
 
 #### Slide (`slide {...}`)
 
-| Option     | Type  | Default | Description                         |
-| :--------- | :---- | :------ | :---------------------------------- |
-| `size`     | float | `0.3`   | Window height, in % of monitor      |
-| `active`   | float | `1.0`   | Active window height multiplier     |
-| `inactive` | float | `1.0`   | Inactive window height multiplier   |
-| `spacing`  | float | `50`    | Spacing between windows (in pixels) |
+| Option        | Type  | Default | Description                         |
+| :------------ | :---- | :------ | :---------------------------------- |
+| `window_size` | float | `0.3`   | Window height, in % of monitor      |
+| `active`      | float | `1.0`   | Active window height multiplier     |
+| `inactive`    | float | `1.0`   | Inactive window height multiplier   |
+| `spacing`     | float | `50`    | Spacing between windows (in pixels) |
 
 **Note:** _Hyprland.conf reloads on save by default._
 
@@ -149,7 +149,7 @@ plugin {
     }
 
     slide {
-      size = 0.3
+      window_size = 0.3
       active = 1.1
       inactive = 1.0
       spacing = 100

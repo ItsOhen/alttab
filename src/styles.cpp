@@ -158,7 +158,8 @@ MoveResult Grid::onMove(Direction dir, const size_t index, const size_t count) {
 
 RenderData Slide::calculate(const StyleContext &ctx, const Vector2D &surfaceSize, const size_t index) const {
   const float aspect = (surfaceSize.y > 0) ? surfaceSize.x / surfaceSize.y : 1.77f;
-  const float activeH = ctx.mSize.y * Config::slideSizeActive.value_or(Config::windowSizeActive) * Config::windowSize;
+  const float baseSize = Config::slideSize.value_or(Config::windowSize);
+  const float activeH = ctx.mSize.y * Config::slideSizeActive.value_or(Config::windowSizeActive) * baseSize;
   const float inactiveH = activeH * Config::slideSizeInactive.value_or(1.0f);
 
   float stripIndex = (ctx.rotation - (M_PI / 2.0f)) / (2.0f * M_PI) * ctx.count;
@@ -171,11 +172,11 @@ RenderData Slide::calculate(const StyleContext &ctx, const Vector2D &surfaceSize
   float diff = visualSlot - stripIndex;
   const float dist = std::abs(diff);
   const float focusWeight = std::pow(std::max(0.0f, 1.0f - dist), 2.5f);
-  const float h = inactiveH * (1.0f + focusWeight * (Config::slideSizeActive.value_or(1.0f) - 1.0f));
+  const float h = inactiveH * (1.0f + focusWeight * (Config::slideSizeActive.value_or(Config::windowSizeActive) - 1.0f));
   const float finalScale = (h / activeH) * ctx.scale;
   const Vector2D size = {h * aspect, h};
 
-  const float spacing = Config::slideSize.value_or(50.0f) * ctx.scale;
+  const float spacing = Config::slideSpacing.value_or(50.0f) * ctx.scale;
   const float slotWidth = inactiveH * aspect + spacing;
   float xOffset = diff * slotWidth;
 
