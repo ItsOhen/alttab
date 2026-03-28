@@ -169,8 +169,10 @@ void Manager::confirm() {
 
 #ifdef HYPRLAND_LEGACY
     Desktop::focusState()->fullWindowFocus(selected.lock());
+    g_pCompositor->changeWindowZOrder(selected.lock(), true);
 #else
     Desktop::focusState()->fullWindowFocus(selected.lock(), Desktop::FOCUS_REASON_KEYBIND);
+    g_pCompositor->changeWindowZOrder(selected.lock(), true);
 #endif
   }
 
