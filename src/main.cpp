@@ -1,10 +1,11 @@
 #include "defines.hpp"
 #include "manager.hpp"
 #include <hyprutils/memory/UniquePtr.hpp>
-#include <src/config/shared/complex/ComplexDataTypes.hpp>
 #include <src/desktop/state/FocusState.hpp>
 #include <src/managers/input/InputManager.hpp>
+#ifdef HYPRLAND_LEGACY
 #include <src/plugins/HookSystem.hpp>
+#endif
 #include <src/render/Renderer.hpp>
 
 // void renderWorkspace(PHLMONITOR pMonitor, PHLWORKSPACE pWorkspace, const Time::steady_tp& now, const CBox& geometry)
@@ -87,9 +88,9 @@ inline Hyprlang::CParseResult configHandleGradientSet(const char *VALUE, void **
   std::string V = VALUE;
 
   if (!*data)
-    *data = new Config::CGradientValueData();
+    *data = new CGradientValueData();
 
-  const auto DATA = sc<Config::CGradientValueData *>(*data);
+  const auto DATA = sc<CGradientValueData *>(*data);
 
   Hyprutils::String::CVarList2 varlist(std::string(V), 0, ' ');
   DATA->m_colors.clear();
@@ -146,7 +147,7 @@ inline void configHandleGradientDestroy(void **data) {
   // if (unloadGuard)
   //   return;
   if (*data)
-    delete sc<Config::CGradientValueData *>(*data);
+    delete sc<CGradientValueData *>(*data);
 }
 
 void registerConfig() {

@@ -8,6 +8,7 @@
 #include <src/helpers/Color.hpp>
 #include <src/protocols/PresentationTime.hpp>
 #include <src/render/pass/BorderPassElement.hpp>
+#include <src/render/pass/RectPassElement.hpp>
 #include <src/render/pass/TexPassElement.hpp>
 #define protected public
 #include <src/render/Renderer.hpp>
@@ -151,5 +152,5 @@ void WindowCard::updateTitleTexture(float scale) {
       5.0f,
       (float)((baseWidth - padding) / (Config::fontSize * 0.55f)));
   auto display = middleTruncate(title, maxChars);
-  titleTexture = g_pHyprRenderer->renderText(display, CHyprColor(1, 1, 1, 1), Config::fontSize);
+  titleTexture = g_pHyprOpenGL->renderText(display, CHyprColor(1, 1, 1, 1), Config::fontSize);
 }

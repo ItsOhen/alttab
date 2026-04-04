@@ -40,5 +40,5 @@ private:
   void updateTitleTexture(float scale);
   CBox position;
   std::string title;
-  SP<Render::ITexture> titleTexture;
+  SP<CTexture> titleTexture;
 };

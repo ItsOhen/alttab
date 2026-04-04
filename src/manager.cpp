@@ -262,9 +262,8 @@ void Manager::renderBackground(MONITORID monid, const CRegion &damage) {
   CTexPassElement::SRenderData data;
   data.tex = tex;
   data.box = box;
-  data.clipRegion = damage;
+  data.damage = damage;
   data.a = 1.0f;
-  data.damage = {};
   g_pHyprRenderer->m_renderPass.add(makeUnique<CTexPassElement>(data));
 
   if (Config::dimEnabled) {
@@ -307,12 +306,12 @@ void Manager::onConfigReload() {
   CONFIG_VARS_OPTIONAL_FLOAT
 #undef X
 
-  auto getGradient = [&](const std::string &name) -> Config::CGradientValueData * {
+  auto getGradient = [&](const std::string &name) -> CGradientValueData * {
     auto val = HyprlandAPI::getConfigValue(PHANDLE, name);
     if (!val || !val->getValue().has_value())
       return nullptr;
     try {
-      return sc<Config::CGradientValueData *>(std::any_cast<void *>(val->getValue()));
+      return sc<CGradientValueData *>(std::any_cast<void *>(val->getValue()));
     } catch (...) {
       return nullptr;
     }
@@ -368,26 +367,26 @@ void Manager::onRender(eRenderStage stage) {
   } break;
 
   case eRenderStage::RENDER_LAST_MOMENT: {
-    const PHLMONITOR MONITOR = g_pHyprRenderer->m_renderData.pMonitor.lock();
+    const PHLMONITOR MONITOR = g_pHyprOpenGL->m_renderData.pMonitor.lock();
     if (!MONITOR)
       return;
     if (!monitors.contains(MONITOR->m_id))
       return;
-    renderBackground(g_pHyprRenderer->m_renderData.pMonitor->m_id, g_pHyprRenderer->m_renderData.damage);
+    renderBackground(g_pHyprOpenGL->m_renderData.pMonitor->m_id, g_pHyprOpenGL->m_renderData.damage);
     if (!Config::splitMonitor)
-      monitors[MONITOR->m_id]->draw(g_pHyprRenderer->m_renderData.damage, monitorFade.current);
+      monitors[MONITOR->m_id]->draw(g_pHyprOpenGL->m_renderData.damage, monitorFade.current);
     else if (MONITOR == FOCUSED_MON) {
       LOG(Log::DRAW, "Rendering Monitors");
-      renderMonitors(g_pHyprRenderer->m_renderData.damage);
+      renderMonitors(g_pHyprOpenGL->m_renderData.damage);
     }
 #ifndef NDEBUG
-    renderDamage(g_pHyprRenderer->m_renderData.damage);
+    renderDamage(g_pHyprOpenGL->m_renderData.damage);
     // Overlay->add(std::format("ActiveID: {}, Offset: {:.2f}", activeMonitor, monitorOffset.current));
     // Overlay->draw(MONITOR);
 #endif
 
     // stupid cursor..
-    g_pPointerManager->renderSoftwareCursorsFor(g_pHyprRenderer->m_renderData.pMonitor.lock(), Time::steadyNow(), g_pHyprRenderer->m_renderData.damage);
+    g_pPointerManager->renderSoftwareCursorsFor(g_pHyprOpenGL->m_renderData.pMonitor.lock(), Time::steadyNow(), g_pHyprOpenGL->m_renderData.damage);
 
     if (MONITOR == FOCUSED_MON)
       g_pCompositor->scheduleFrameForMonitor(MONITOR);

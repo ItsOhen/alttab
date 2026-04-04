@@ -1,6 +1,7 @@
 #pragma once
-#include <src/config/shared/complex/ComplexDataTypes.hpp>
+#include <src/config/ConfigDataValues.hpp>
 #include <src/desktop/DesktopTypes.hpp>
+#include <src/helpers/MiscFunctions.hpp>
 #include <src/helpers/Color.hpp>
 #include <src/plugins/PluginAPI.hpp>
 

@@ -2,7 +2,7 @@
 #include "logger.hpp"
 #include <hyprutils/math/Vector2D.hpp>
 
-#define protected public
+#define private public
 #include <src/render/OpenGL.hpp>
 #include <src/render/Renderer.hpp>
 #undef private
@@ -36,29 +36,27 @@ alttab::Monitor::Monitor(PHLMONITOR monitor) : monitor(monitor),
 }
 void alttab::Monitor::createTexture() {
   LOG_SCOPE()
-  bgFb = g_pHyprRenderer->createFB();
-  blurFb = g_pHyprRenderer->createFB();
   if (monitor->m_pixelSize.x <= 0 || monitor->m_pixelSize.y <= 0)
     return;
 
-  if (!bgFb->isAllocated() || bgFb->m_size != monitor->m_pixelSize)
-    bgFb->alloc(monitor->m_pixelSize.x, monitor->m_pixelSize.y, monitor->m_drmFormat);
+  if (!bgFb.isAllocated() || bgFb.m_size != monitor->m_pixelSize)
+    bgFb.alloc(monitor->m_pixelSize.x, monitor->m_pixelSize.y, monitor->m_drmFormat);
   CRegion fullRegion = CBox({0, 0}, monitor->m_pixelSize);
 
   OVERRIDE_WORKSPACE = false;
-  g_pHyprRenderer->beginFullFakeRender(monitor, fullRegion, bgFb);
+  g_pHyprRenderer->beginRender(monitor, fullRegion, RENDER_MODE_FULL_FAKE, {}, &bgFb);
   g_pHyprRenderer->renderWorkspace(monitor, monitor->m_activeWorkspace, NOW, fullRegion.getExtents());
   g_pHyprRenderer->m_renderPass.render(fullRegion);
   g_pHyprRenderer->m_renderPass.clear();
   g_pHyprRenderer->endRender();
   OVERRIDE_WORKSPACE = true;
-  texture = bgFb->getTexture();
+  texture = bgFb.getTexture();
 
-  if (!blurFb->isAllocated() || blurFb->m_size != monitor->m_pixelSize / 2)
-    blurFb->alloc(monitor->m_pixelSize.x / 2, monitor->m_pixelSize.y / 2, monitor->m_drmFormat);
+  if (!blurFb.isAllocated() || blurFb.m_size != monitor->m_pixelSize / 2)
+    blurFb.alloc(monitor->m_pixelSize.x / 2, monitor->m_pixelSize.y / 2, monitor->m_drmFormat);
   CRegion blurRegion = CBox({0, 0}, monitor->m_pixelSize);
 
-  g_pHyprRenderer->beginFullFakeRender(monitor, blurRegion, blurFb);
+  g_pHyprRenderer->beginRender(monitor, blurRegion, RENDER_MODE_FULL_FAKE, {}, &blurFb);
 
   CBox destBox = {{0, 0}, monitor->m_pixelSize / 2};
   CTexPassElement::SRenderData data;
@@ -81,7 +79,7 @@ void alttab::Monitor::createTexture() {
   g_pHyprRenderer->m_renderPass.render(blurRegion);
   g_pHyprRenderer->m_renderPass.clear();
   g_pHyprRenderer->endRender();
-  blurred = blurFb->getTexture();
+  blurred = blurFb.getTexture();
 }
 
 WP<WindowCard> alttab::Monitor::addWindow(PHLWINDOW window) {
