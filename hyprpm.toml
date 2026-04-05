@@ -4,6 +4,10 @@ commit_pins = [
     "b07770b9ef1cceb2e6f56d33538aaffb9186b9c",
     "b96d88f5bb5383e9ed474cb6db36f4298de697a6",
   ], # 0.3.3 for 0.54.1b
+  [
+    "521ece463c4a9d3d128670688a34756805a4328f",
+    "782ebdbb240d8a67f5b155d1157407bafffb30d1",
+  ], #0.3.4 for 0.54-3 thanks to @luobolong
 ]
 name = "Ergons_shitty_plugins"
 authors = ["Ergon"]
