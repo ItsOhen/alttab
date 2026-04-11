@@ -15,7 +15,7 @@
 #include <src/managers/input/InputManager.hpp>
 #include <src/plugins/PluginAPI.hpp>
 #include <src/protocols/PresentationTime.hpp>
-#include <src/render/pass/RectPassElement.hpp>
+
 #include <src/render/pass/TexPassElement.hpp>
 #define protected public
 #include <src/render/OpenGL.hpp>
@@ -262,17 +262,15 @@ void Manager::renderBackground(MONITORID monid, const CRegion &damage) {
   CTexPassElement::SRenderData data;
   data.tex = tex;
   data.box = box;
-  data.clipRegion = damage;
+
   data.a = 1.0f;
   data.damage = {};
   g_pHyprRenderer->m_renderPass.add(makeUnique<CTexPassElement>(data));
+  g_pHyprRenderer->m_renderPass.render(damage);
+  g_pHyprRenderer->m_renderPass.clear();
 
   if (Config::dimEnabled) {
-    CRectPassElement::SRectData dimData;
-    dimData.box = box;
-    dimData.color = {0.0, 0.0, 0.0, Config::dimAmount};
-    data.damage = {};
-    g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(dimData));
+    g_pHyprOpenGL->renderRect(box, {0.0, 0.0, 0.0, Config::dimAmount}, {});
   }
 }
 
@@ -307,12 +305,12 @@ void Manager::onConfigReload() {
   CONFIG_VARS_OPTIONAL_FLOAT
 #undef X
 
-  auto getGradient = [&](const std::string &name) -> Config::CGradientValueData * {
+  auto getGradient = [&](const std::string &name) -> CGradientValueData * {
     auto val = HyprlandAPI::getConfigValue(PHANDLE, name);
     if (!val || !val->getValue().has_value())
       return nullptr;
     try {
-      return sc<Config::CGradientValueData *>(std::any_cast<void *>(val->getValue()));
+      return sc<CGradientValueData *>(std::any_cast<void *>(val->getValue()));
     } catch (...) {
       return nullptr;
     }
@@ -368,26 +366,28 @@ void Manager::onRender(eRenderStage stage) {
   } break;
 
   case eRenderStage::RENDER_LAST_MOMENT: {
-    const PHLMONITOR MONITOR = g_pHyprRenderer->m_renderData.pMonitor.lock();
+    const auto& rd = g_pHyprOpenGL->m_renderData;
+    const PHLMONITOR MONITOR = rd.pMonitor.lock();
     if (!MONITOR)
       return;
     if (!monitors.contains(MONITOR->m_id))
       return;
-    renderBackground(g_pHyprRenderer->m_renderData.pMonitor->m_id, g_pHyprRenderer->m_renderData.damage);
+    CRegion damage = rd.damage; // mutable copy — renderSoftwareCursorsFor requires non-const ref
+    renderBackground(rd.pMonitor->m_id, damage);
     if (!Config::splitMonitor)
-      monitors[MONITOR->m_id]->draw(g_pHyprRenderer->m_renderData.damage, monitorFade.current);
+      monitors[MONITOR->m_id]->draw(damage, monitorFade.current);
     else if (MONITOR == FOCUSED_MON) {
       LOG(Log::DRAW, "Rendering Monitors");
-      renderMonitors(g_pHyprRenderer->m_renderData.damage);
+      renderMonitors(damage);
     }
 #ifndef NDEBUG
-    renderDamage(g_pHyprRenderer->m_renderData.damage);
+    renderDamage(damage);
     // Overlay->add(std::format("ActiveID: {}, Offset: {:.2f}", activeMonitor, monitorOffset.current));
     // Overlay->draw(MONITOR);
 #endif
 
     // stupid cursor..
-    g_pPointerManager->renderSoftwareCursorsFor(g_pHyprRenderer->m_renderData.pMonitor.lock(), Time::steadyNow(), g_pHyprRenderer->m_renderData.damage);
+    g_pPointerManager->renderSoftwareCursorsFor(rd.pMonitor.lock(), Time::steadyNow(), damage);
 
     if (MONITOR == FOCUSED_MON)
       g_pCompositor->scheduleFrameForMonitor(MONITOR);
@@ -507,10 +507,8 @@ void Manager::renderDamage(const CRegion &damage) {
   LOG(Log::DAMAGE, "Damage: {} {}", ext.pos(), ext.size());
 
   damage.forEachRect([](auto &rect) {
-    CRectPassElement::SRectData debug;
-    debug.box = {sc<double>(rect.x1), sc<double>(rect.y1),
-                 sc<double>(rect.x2 - rect.x1), sc<double>(rect.y2 - rect.y1)};
-    debug.color = {1.0, 0.0, 0.0, 0.1};
-    g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(debug));
+    CBox box = {sc<double>(rect.x1), sc<double>(rect.y1),
+                sc<double>(rect.x2 - rect.x1), sc<double>(rect.y2 - rect.y1)};
+    g_pHyprOpenGL->renderRect(box, {1.0, 0.0, 0.0, 0.1}, {});
   });
 }

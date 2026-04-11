@@ -2,9 +2,11 @@
 #include "logger.hpp"
 #include <hyprutils/math/Vector2D.hpp>
 
+#define private public
 #define protected public
 #include <src/render/OpenGL.hpp>
 #include <src/render/Renderer.hpp>
+#undef protected
 #undef private
 
 #include "manager.hpp"
@@ -13,7 +15,6 @@
 #include <src/Compositor.hpp>
 #include <src/desktop/state/FocusState.hpp>
 #include <src/desktop/view/Window.hpp>
-#include <src/render/pass/RectPassElement.hpp>
 #include <src/render/pass/TexPassElement.hpp>
 
 #include <src/protocols/PresentationTime.hpp>
@@ -36,8 +37,8 @@ alttab::Monitor::Monitor(PHLMONITOR monitor) : monitor(monitor),
 }
 void alttab::Monitor::createTexture() {
   LOG_SCOPE()
-  bgFb = g_pHyprRenderer->createFB();
-  blurFb = g_pHyprRenderer->createFB();
+  bgFb = makeShared<CFramebuffer>();
+  blurFb = makeShared<CFramebuffer>();
   if (monitor->m_pixelSize.x <= 0 || monitor->m_pixelSize.y <= 0)
     return;
 
@@ -46,8 +47,8 @@ void alttab::Monitor::createTexture() {
   CRegion fullRegion = CBox({0, 0}, monitor->m_pixelSize);
 
   OVERRIDE_WORKSPACE = false;
-  g_pHyprRenderer->beginFullFakeRender(monitor, fullRegion, bgFb);
-  g_pHyprRenderer->renderWorkspace(monitor, monitor->m_activeWorkspace, NOW, fullRegion.getExtents());
+  g_pHyprRenderer->beginRender(monitor, fullRegion, RENDER_MODE_FULL_FAKE, {}, bgFb.get());
+  g_pHyprRenderer->renderWorkspace(monitor, monitor->m_activeWorkspace, Time::steadyNow(), fullRegion.getExtents());
   g_pHyprRenderer->m_renderPass.render(fullRegion);
   g_pHyprRenderer->m_renderPass.clear();
   g_pHyprRenderer->endRender();
@@ -58,7 +59,7 @@ void alttab::Monitor::createTexture() {
     blurFb->alloc(monitor->m_pixelSize.x / 2, monitor->m_pixelSize.y / 2, monitor->m_drmFormat);
   CRegion blurRegion = CBox({0, 0}, monitor->m_pixelSize);
 
-  g_pHyprRenderer->beginFullFakeRender(monitor, blurRegion, blurFb);
+  g_pHyprRenderer->beginRender(monitor, blurRegion, RENDER_MODE_FULL_FAKE, {}, blurFb.get());
 
   CBox destBox = {{0, 0}, monitor->m_pixelSize / 2};
   CTexPassElement::SRenderData data;
@@ -66,18 +67,7 @@ void alttab::Monitor::createTexture() {
   data.box = destBox;
   data.blur = true;
   g_pHyprRenderer->m_renderPass.add(makeUnique<CTexPassElement>(data));
-  CRectPassElement::SRectData blur;
-  blur.box = destBox;
-  blur.color = {0.0, 0.0, 0.0, 0.0};
-  blur.blur = true;
-  g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(blur));
-
-  // #ifndef NDEBUG
-  //   CRectPassElement::SRectData debug;
-  //   debug.box = destBox;
-  //   debug.color = {0.0, 0.0, 1.0, 0.1};
-  //   g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(debug));
-  // #endif
+  g_pHyprOpenGL->renderRect(destBox, {0.0, 0.0, 0.0, 0.0}, {.blur = true});
   g_pHyprRenderer->m_renderPass.render(blurRegion);
   g_pHyprRenderer->m_renderPass.clear();
   g_pHyprRenderer->endRender();
@@ -171,7 +161,7 @@ void alttab::Monitor::draw(const CRegion &damage, const float alpha) {
   LOG_SCOPE(Log::DRAW)
 
   for (auto &task : renderTasks | std::views::reverse | std::views::filter([](auto &t) { return t.card; })) {
-    task.card->draw();
+    task.card->draw(damage);
     if (Config::livePreview && task.visibility > Config::previewCutoff)
       task.card->present();
   }

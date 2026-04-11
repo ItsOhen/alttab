@@ -2,6 +2,7 @@
 #include "defines.hpp"
 #include "helpers.hpp"
 #include "logger.hpp"
+#include "text.hpp"
 #include <hyprutils/math/Vector2D.hpp>
 #include <src/desktop/state/FocusState.hpp>
 #include <src/desktop/view/Window.hpp>
@@ -10,6 +11,7 @@
 #include <src/render/pass/BorderPassElement.hpp>
 #include <src/render/pass/TexPassElement.hpp>
 #define protected public
+#include <src/render/OpenGL.hpp>
 #include <src/render/Renderer.hpp>
 #undef protected
 
@@ -25,7 +27,7 @@ CBox WindowCard::getPosition() const {
   return position;
 }
 
-void WindowCard::draw() {
+void WindowCard::draw(const CRegion& damage) {
   LOG_SCOPE(Log::DRAW);
 
   if (!window)
@@ -40,21 +42,8 @@ void WindowCard::draw() {
 
   updateTitleTexture(scale);
 
-  {
-    CRectPassElement::SRectData rect;
-    rect.box = layout.title;
-    rect.color = {0, 0, 0, 0.8f * alpha};
-
-    g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(rect));
-  }
-
-  {
-    CRectPassElement::SRectData rect;
-    rect.box = layout.preview;
-    rect.color = {0, 0, 0, alpha};
-
-    g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(rect));
-  }
+  g_pHyprOpenGL->renderRect(layout.title, {0, 0, 0, 0.8f * alpha}, {});
+  g_pHyprOpenGL->renderRect(layout.preview, {0, 0, 0, alpha}, {});
 
   {
     CBorderPassElement::SBorderData border;
@@ -96,11 +85,11 @@ void WindowCard::draw() {
   }
 
 #ifndef NDEBUG
-  CRectPassElement::SRectData debug;
-  debug.box = layout.outer.copy();
-  debug.color = {0.0, 0.0, 1.0, 0.1};
-  g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(debug));
+  g_pHyprOpenGL->renderRect(layout.outer.copy(), {0.0, 0.0, 1.0, 0.1}, {});
 #endif
+
+  g_pHyprRenderer->m_renderPass.render(damage);
+  g_pHyprRenderer->m_renderPass.clear();
 }
 
 void WindowCard::present() {
@@ -151,5 +140,5 @@ void WindowCard::updateTitleTexture(float scale) {
       5.0f,
       (float)((baseWidth - padding) / (Config::fontSize * 0.55f)));
   auto display = middleTruncate(title, maxChars);
-  titleTexture = g_pHyprRenderer->renderText(display, CHyprColor(1, 1, 1, 1), Config::fontSize);
+  titleTexture = alttab::renderTextToTexture(display, CHyprColor(1, 1, 1, 1), Config::fontSize, scale);
 }

@@ -1,4 +1,5 @@
 #include "logger.hpp"
+#include "text.hpp"
 #include <any>
 #include <src/render/pass/TexPassElement.hpp>
 #define private public
@@ -20,22 +21,19 @@ void DebugText::draw(PHLMONITOR monitor) {
   if (m_sBuffer.empty())
     return;
 
-  auto tex = g_pHyprRenderer->renderText(m_sBuffer, {1.0, 1.0, 1.0, 1.0}, 24);
-  if (!tex)
+  auto tex = alttab::renderTextToTexture(m_sBuffer, CHyprColor(1.0, 1.0, 1.0, 1.0), 14, monitor->m_scale);
+  if (!tex) {
+    m_sBuffer.clear();
     return;
+  }
 
-  Vector2D logicalSize = tex->m_size * monitor->m_scale;
-  auto rect = CRectPassElement::SRectData{
-      .box = {{10, 10}, logicalSize},
-      .color = {0, 0, 0, 0.6},
-      .blur = false};
+  Vector2D logicalSize = Vector2D(tex->m_size.x, tex->m_size.y);
+  g_pHyprOpenGL->renderRect(CBox{{10, 10}, logicalSize}, {0, 0, 0, 0.6}, {});
 
-  auto text = CTexPassElement::SRenderData{
-      .tex = tex,
-      .box = {{0, 0}, logicalSize},
-      .a = 1.0f};
-
-  g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(rect));
+  CTexPassElement::SRenderData text;
+  text.tex = tex;
+  text.box = {{10, 10}, logicalSize};
+  text.a = 1.0f;
   g_pHyprRenderer->m_renderPass.add(makeUnique<CTexPassElement>(text));
 
   m_sBuffer.clear();
