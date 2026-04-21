@@ -87,6 +87,7 @@ private:
   bool graceExpired = false;
   std::vector<MonitorElement> stack;
   CRegion previousFrameDamage;
+  bool wasAnimating = true;
 
   friend class alttab::Monitor;
 };

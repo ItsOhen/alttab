@@ -15,6 +15,7 @@
 #include <src/Compositor.hpp>
 #include <src/desktop/state/FocusState.hpp>
 #include <src/desktop/view/Window.hpp>
+#include <src/render/pass/RectPassElement.hpp>
 #include <src/render/pass/TexPassElement.hpp>
 
 #include <src/protocols/PresentationTime.hpp>
@@ -67,7 +68,16 @@ void alttab::Monitor::createTexture() {
   data.box = destBox;
   data.blur = true;
   g_pHyprRenderer->m_renderPass.add(makeUnique<CTexPassElement>(data));
-  g_pHyprOpenGL->renderRect(destBox, {0.0, 0.0, 0.0, 0.0}, {.blur = true});
+
+  // Blur trigger — deferred via CRectPassElement
+  {
+    CRectPassElement::SRectData rect;
+    rect.box = destBox;
+    rect.color = {0.0, 0.0, 0.0, 0.0};
+    rect.blur = true;
+    g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(rect));
+  }
+
   g_pHyprRenderer->m_renderPass.render(blurRegion);
   g_pHyprRenderer->m_renderPass.clear();
   g_pHyprRenderer->endRender();
@@ -111,7 +121,8 @@ void alttab::Monitor::update(const float delta, const float offset, CRegion &dam
       .tiltOffset = r * std::sin(Config::tilt * ((float)M_PI / 180.0f)),
       .rotation = rotation.current,
       .scale = zoom.current,
-      .alpha = alpha.current};
+      .alpha = alpha.current,
+      .activeProgress = std::clamp(rotation.progress, 0.0f, 1.0f)};
 
   const size_t winCount = windows.size();
   renderTasks.clear();
@@ -119,7 +130,8 @@ void alttab::Monitor::update(const float delta, const float offset, CRegion &dam
     renderTasks.reserve(winCount);
 
   for (size_t i = 0; i < winCount; ++i) {
-    if (!windows[i] || !windows[i]->window)
+    //Guard against expired window handles
+    if (!windows[i] || !windows[i]->window || !windows[i]->window->wlSurface())
       continue;
 
     RenderData data = manager->layoutStyle->calculate(ctx, windows[i]->window->m_size, i);
@@ -136,7 +148,10 @@ void alttab::Monitor::update(const float delta, const float offset, CRegion &dam
     return a.data.z > b.data.z;
   });
 
+  //Unified bounding-box damage instead of per-card expansion
   CRegion usedArea;
+  double minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+
   for (auto &task : renderTasks) {
     CRegion visible = CRegion(task.data.position).subtract(usedArea);
     if (visible.empty()) {
@@ -150,17 +165,35 @@ void alttab::Monitor::update(const float delta, const float offset, CRegion &dam
     });
 
     task.visibility = std::clamp((float)(area / (task.data.position.width * task.data.position.height)), 0.0f, 1.0f);
+
+    // Accumulate this window's footprint into the occlusion mask for subsequent (background) windows
+    usedArea.add(task.data.position);
+
+    // Accumulate global bounds (padded for blur kernel headroom)
     CBox outerBox = task.data.position.copy();
     outerBox.round();
-    outerBox.expand(Config::borderSize);
-    damage.add(outerBox.x, outerBox.y, outerBox.width, outerBox.height);
+    outerBox.expand(Config::borderSize + 32);
+    minX = std::min(minX, outerBox.x);
+    minY = std::min(minY, outerBox.y);
+    maxX = std::max(maxX, outerBox.x + outerBox.width);
+    maxY = std::max(maxY, outerBox.y + outerBox.height);
+  }
+
+  // Submit a single unified damage rectangle
+  if (minX < maxX && minY < maxY) {
+    cachedGlobalBounds = CBox{minX, minY, maxX - minX, maxY - minY};
+    cachedGlobalBounds.round();
+    damage.add(cachedGlobalBounds);
   }
 }
 
 void alttab::Monitor::draw(const CRegion &damage, const float alpha) {
   LOG_SCOPE(Log::DRAW)
 
-  for (auto &task : renderTasks | std::views::reverse | std::views::filter([](auto &t) { return t.card; })) {
+  for (auto &task : renderTasks | std::views::reverse) {
+    // Guard card and window validity
+    if (!task.card || !task.card->window)
+      continue;
     task.card->draw(damage);
     if (Config::livePreview && task.visibility > Config::previewCutoff)
       task.card->present();
@@ -181,7 +214,7 @@ void alttab::Monitor::activeChanged() {
     windows[i]->isActive = (i == activeWindow);
   }
   LOG(Log::UPDATE, "activeWindow2: {}, size: {}", activeWindow, count);
-  // Why am i doing this backwards??
+  // Why am i doing this backwards?? stilling figuring out
   const auto target = (M_PI / 2) + (M_PI * 2.0f * activeWindow) / count;
   auto diff = target - rotation.target;
   diff = std::remainder(diff, 2.0f * M_PI);

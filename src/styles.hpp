@@ -12,6 +12,7 @@ struct StyleContext {
   float radius;
   float tiltOffset;
   float rotation, scale, alpha;
+  float activeProgress = 1.0f; // 0.0 = just started transitioning, 1.0 = fully arrived
 };
 
 struct RenderData {

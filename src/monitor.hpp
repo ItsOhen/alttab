@@ -41,6 +41,9 @@ public:
   size_t activeWindow = 0;
   std::vector<UP<WindowCard>> windows;
 
+  // changed something here now forgotten
+  CBox cachedGlobalBounds;
+
   friend class Manager;
 };
 

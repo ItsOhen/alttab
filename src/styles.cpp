@@ -90,8 +90,11 @@ RenderData Grid::calculate(const StyleContext &ctx, const Vector2D &surfaceSize,
   const int curRow = (int)(index / cols);
   const int curCol = (int)(index % cols);
 
-  const float isActive = index == ctx.active ? 1.0f : 0.0f;
-  const float windowScale = isActive ? Config::GWSizeActive.value_or(Config::windowSizeActive) : Config::GWSizeInactive.value_or(Config::windowSizeInactive);
+  const float isTarget = (index == ctx.active) ? 1.0f : 0.0f;
+  const float isActive = std::lerp(0.0f, isTarget, ctx.activeProgress);
+  const float activeScale = Config::GWSizeActive.value_or(Config::windowSizeActive);
+  const float inactiveScale = Config::GWSizeInactive.value_or(Config::windowSizeInactive);
+  const float windowScale = std::lerp(inactiveScale, activeScale, isActive);
   const float finalScale = windowScale * ctx.scale;
 
   const float winW = slotW * finalScale;
@@ -110,7 +113,7 @@ RenderData Grid::calculate(const StyleContext &ctx, const Vector2D &surfaceSize,
 
   return {
       .visible = finalAlpha > 0.01f,
-      .z = isActive,
+      .z = isTarget,
       .rotation = 0.0f,
       .scale = finalScale,
       .alpha = std::clamp(finalAlpha, 0.0f, 1.0f),
@@ -226,3 +229,5 @@ MoveResult Slide::onMove(Direction dir, const size_t index, const size_t count) 
 
   return {.index = (size_t)getIndexFromSlot(targetSlot)};
 }
+
+//to much maths :( 

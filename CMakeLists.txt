@@ -62,9 +62,9 @@ if(ENABLE_PROTOCOLS)
   pkg_check_modules(hyprwire REQUIRED IMPORTED_TARGET hyprwire)
 endif()
 
-pkg_check_modules(pangocairo REQUIRED IMPORTED_TARGET pangocairo)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE rt PkgConfig::hyprland PkgConfig::pangocairo)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE rt PkgConfig::hyprland)
 
 if(ENABLE_PROTOCOLS)
   target_link_libraries(${PROJECT_NAME} PRIVATE PkgConfig::hyprwire)

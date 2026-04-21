@@ -16,6 +16,7 @@
 #include <src/plugins/PluginAPI.hpp>
 #include <src/protocols/PresentationTime.hpp>
 
+#include <src/render/pass/RectPassElement.hpp>
 #include <src/render/pass/TexPassElement.hpp>
 #define protected public
 #include <src/render/OpenGL.hpp>
@@ -75,11 +76,11 @@ Manager::Manager() : monitorOffset(&Config::monitorAnimationSpeed),
     //   cbInfo.cancelled = true;
     // }
     // Noop until i figure out a better way to handle cancel, so that it still does monitor change and cursor draws.
-    ;
+    ; // hmmm will do later as event cancellation still blocks software cursor rendering
   });
 #endif
 
-  lastFrame = lastUpdate = NOW;
+  lastFrame = lastUpdate = NOW; 
 }
 
 void Manager::damageMonitors() {
@@ -185,6 +186,28 @@ void Manager::update(float delta) {
   const Vector2D monitorPos = MONITOR->m_position;
   const bool animating = AnimationManager::get().tick(delta) || stack.empty();
   const float spacing = MONITOR->m_size.y * Config::monitorSpacing;
+
+  //if not animating and we have cached state, skip layout math
+  if (!animating && !stack.empty()) {
+    // One-shot: flush the final frame to clear animation trails, then go fully idle
+    if (wasAnimating) {
+      wasAnimating = false;
+      CRegion damage;
+      for (auto &[id, mon] : monitors) {
+        if (!mon->cachedGlobalBounds.empty())
+          damage.add(mon->cachedGlobalBounds);
+      }
+      damage.add(previousFrameDamage);
+      g_pHyprRenderer->damageRegion(damage);
+      previousFrameDamage = {};
+    }
+    // Fully idle — no damage submission, GPU sleeps Intel 4000HD said thanks;
+    lastFrame = NOW;
+    return;
+  }
+
+  wasAnimating = true;
+
   stack.clear();
   CRegion damage;
   int i = 0;
@@ -266,11 +289,13 @@ void Manager::renderBackground(MONITORID monid, const CRegion &damage) {
   data.a = 1.0f;
   data.damage = {};
   g_pHyprRenderer->m_renderPass.add(makeUnique<CTexPassElement>(data));
-  g_pHyprRenderer->m_renderPass.render(damage);
-  g_pHyprRenderer->m_renderPass.clear();
 
+  //Dim overlay — deferred via CRectPassElement
   if (Config::dimEnabled) {
-    g_pHyprOpenGL->renderRect(box, {0.0, 0.0, 0.0, Config::dimAmount}, {});
+    CRectPassElement::SRectData rect;
+    rect.box = box;
+    rect.color = {0.0, 0.0, 0.0, Config::dimAmount};
+    g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(rect));
   }
 }
 
@@ -348,6 +373,14 @@ void Manager::onWindowDestroyed(PHLWINDOW window) {
       }
     }
   }
+
+  // Clamp activeWindow to prevent OOB after window removal
+  for (auto &[id, m] : monitors) {
+    if (!m->windows.empty())
+      m->activeWindow = std::min(m->activeWindow, m->windows.size() - 1);
+    else
+      m->activeWindow = 0;
+  }
 }
 
 void Manager::onRender(eRenderStage stage) {
@@ -380,6 +413,11 @@ void Manager::onRender(eRenderStage stage) {
       LOG(Log::DRAW, "Rendering Monitors");
       renderMonitors(damage);
     }
+
+    // Single deferred flush for the entire frame
+    g_pHyprRenderer->m_renderPass.render(damage);
+    g_pHyprRenderer->m_renderPass.clear();
+
 #ifndef NDEBUG
     renderDamage(damage);
     // Overlay->add(std::format("ActiveID: {}, Offset: {:.2f}", activeMonitor, monitorOffset.current));
@@ -405,7 +443,7 @@ void Manager::onFocusChange(PHLMONITOR monitor) {
   monitorOffset.set(activeMonitor);
 }
 
-// Feels like indexing by size_t id's might have been a mistake at this point..
+// Feels like indexing by size_t id's might have been a mistake at this point..   spolier = it was a mistake
 void Manager::onMouseClick(const IPointer::SButtonEvent button) {
   LOG_SCOPE(Log::MOUSE)
   if (button.button != BTN_LEFT || button.state != WL_POINTER_BUTTON_STATE_PRESSED)
@@ -419,8 +457,15 @@ void Manager::onMouseClick(const IPointer::SButtonEvent button) {
   for (auto it = stack.begin(); it != stack.end(); ++it) {
     auto *mon = it->monitor;
 
+    //Guard against stale stack entries
+    if (!mon || !monitors.contains(mon->monitor->m_id))
+      continue;
+
     for (auto taskIt = mon->renderTasks.begin(); taskIt != mon->renderTasks.end(); ++taskIt) {
       auto &task = *taskIt;
+
+      if (!task.card || !task.card->window)
+        continue;
 
       if (task.card->getPosition().containsPoint(localMouse)) {
         const auto id = mon->monitor->m_id;
@@ -506,9 +551,17 @@ void Manager::renderDamage(const CRegion &damage) {
 
   LOG(Log::DAMAGE, "Damage: {} {}", ext.pos(), ext.size());
 
+  // Debug damage visualization — deferred via CRectPassElement
   damage.forEachRect([](auto &rect) {
     CBox box = {sc<double>(rect.x1), sc<double>(rect.y1),
                 sc<double>(rect.x2 - rect.x1), sc<double>(rect.y2 - rect.y1)};
-    g_pHyprOpenGL->renderRect(box, {1.0, 0.0, 0.0, 0.1}, {});
+    CRectPassElement::SRectData rd;
+    rd.box = box;
+    rd.color = {1.0, 0.0, 0.0, 0.1};
+    g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(rd));
   });
+
+  // Debug damage rects are flushed together with everything else
+  g_pHyprRenderer->m_renderPass.render(damage);
+  g_pHyprRenderer->m_renderPass.clear();
 }

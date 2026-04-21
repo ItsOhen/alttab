@@ -80,7 +80,7 @@ static bool onKeyEvent(void *self, std::any event, SP<IKeyboard> pKeyboard) {
   return false;
 }
 
-// Straight from ConfigManager.cpp. THANKS GUYS!
+// Straight from ConfigManager.cpp. THANKS GUYS!!
 inline Hyprlang::CParseResult configHandleGradientSet(const char *VALUE, void **data) {
   // if (unloadGuard)
   //   return {};
@@ -173,7 +173,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     throw std::runtime_error("Version mismatch");
 
   manager = makeUnique<alttab::Manager>();
-  /* Maybe later.
+  /* Maybe later. I will do it :3 ask me nicly
     HyprlandAPI::addDispatcherV2(PHANDLE, "alttab", [&](std::string args) -> SDispatchResult {
       LOG_SCOPE()
       manager->toggle();
