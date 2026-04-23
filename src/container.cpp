@@ -8,8 +8,10 @@
 #include <src/helpers/Color.hpp>
 #include <src/protocols/PresentationTime.hpp>
 #include <src/render/pass/BorderPassElement.hpp>
+#include <src/render/pass/RectPassElement.hpp>
 #include <src/render/pass/TexPassElement.hpp>
 #define protected public
+#include <src/render/OpenGL.hpp>
 #include <src/render/Renderer.hpp>
 #undef protected
 
@@ -25,10 +27,10 @@ CBox WindowCard::getPosition() const {
   return position;
 }
 
-void WindowCard::draw() {
+void WindowCard::draw(const CRegion& damage) {
   LOG_SCOPE(Log::DRAW);
 
-  if (!window)
+  if (!window || !window->wlSurface() || !window->wlSurface()->resource())
     return;
 
   const auto MONITOR = Desktop::focusState()->monitor();
@@ -40,22 +42,23 @@ void WindowCard::draw() {
 
   updateTitleTexture(scale);
 
+  // Title bar background — deferred
   {
     CRectPassElement::SRectData rect;
     rect.box = layout.title;
     rect.color = {0, 0, 0, 0.8f * alpha};
-
     g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(rect));
   }
 
+  // Preview background — deferred
   {
     CRectPassElement::SRectData rect;
     rect.box = layout.preview;
     rect.color = {0, 0, 0, alpha};
-
     g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(rect));
   }
 
+  // Border — deferred
   {
     CBorderPassElement::SBorderData border;
     border.box = layout.outer;
@@ -66,6 +69,7 @@ void WindowCard::draw() {
     g_pHyprRenderer->m_renderPass.add(makeUnique<CBorderPassElement>(border));
   }
 
+  // Window surface texture — deferred
   window->wlSurface()->resource()->breadthfirst(
       [&](SP<CWLSurfaceResource> s, const Vector2D &offset, void *) {
         if (!s->m_current.texture)
@@ -82,6 +86,7 @@ void WindowCard::draw() {
       },
       nullptr);
 
+  // Title text — deferred
   if (titleTexture) {
 
     Vector2D size = titleTexture->m_size * scale;
@@ -96,11 +101,16 @@ void WindowCard::draw() {
   }
 
 #ifndef NDEBUG
-  CRectPassElement::SRectData debug;
-  debug.box = layout.outer.copy();
-  debug.color = {0.0, 0.0, 1.0, 0.1};
-  g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(debug));
+  // Debug overlay — deferred
+  {
+    CRectPassElement::SRectData rect;
+    rect.box = layout.outer;
+    rect.color = {0.0, 0.0, 1.0, 0.1};
+    g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(rect));
+  }
 #endif
+
+  // NO per-card flush — the single flush happens in Manager::onRender()
 }
 
 void WindowCard::present() {
@@ -137,8 +147,10 @@ CardLayout WindowCard::buildLayout(float scale) {
 }
 
 void WindowCard::updateTitleTexture(float scale) {
+  if (!window)
+    return;
 
-  float baseWidth = position.width / scale;
+  float baseWidth = position.width;
   float padding = 10.f;
 
   if (window->m_title == title && std::abs(lastBaseWidth - baseWidth) < 1.f)
@@ -151,5 +163,5 @@ void WindowCard::updateTitleTexture(float scale) {
       5.0f,
       (float)((baseWidth - padding) / (Config::fontSize * 0.55f)));
   auto display = middleTruncate(title, maxChars);
-  titleTexture = g_pHyprRenderer->renderText(display, CHyprColor(1, 1, 1, 1), Config::fontSize);
+  titleTexture = g_pHyprOpenGL->renderText(display, CHyprColor(1, 1, 1, 1), Config::fontSize);
 }

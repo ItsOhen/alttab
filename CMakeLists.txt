@@ -62,6 +62,8 @@ if(ENABLE_PROTOCOLS)
   pkg_check_modules(hyprwire REQUIRED IMPORTED_TARGET hyprwire)
 endif()
 
+
+
 target_link_libraries(${PROJECT_NAME} PRIVATE rt PkgConfig::hyprland)
 
 if(ENABLE_PROTOCOLS)

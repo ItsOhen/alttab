@@ -30,7 +30,7 @@ uninstall:
 
 clean:
 	rm -rf build
-	rm $(TARGET).so
-	rm compile_commands.json
+	rm -f $(TARGET).so
+	rm -f compile_commands.json
 
 .PHONY: all release run trace debug

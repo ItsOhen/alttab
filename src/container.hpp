@@ -21,7 +21,7 @@ struct CardLayout {
 class WindowCard {
 public:
   WindowCard(PHLWINDOW window);
-  void draw();
+  void draw(const CRegion& damage);
   void present();
   void setPosition(const CBox &position);
   CBox getPosition() const;
@@ -40,5 +40,5 @@ private:
   void updateTitleTexture(float scale);
   CBox position;
   std::string title;
-  SP<Render::ITexture> titleTexture;
+  SP<CTexture> titleTexture;
 };

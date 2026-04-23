@@ -35,11 +35,14 @@ public:
   AnimatedValue<float> zoom;
   AnimatedValue<float> alpha;
   PHLMONITOR monitor;
-  SP<Render::ITexture> texture;
-  SP<Render::ITexture> blurred;
-  SP<Render::IFramebuffer> bgFb, blurFb;
+  SP<CTexture> texture;
+  SP<CTexture> blurred;
+  SP<CFramebuffer> bgFb, blurFb;
   size_t activeWindow = 0;
   std::vector<UP<WindowCard>> windows;
+
+  // changed something here now forgotten
+  CBox cachedGlobalBounds;
 
   friend class Manager;
 };

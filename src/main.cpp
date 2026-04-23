@@ -1,7 +1,7 @@
 #include "defines.hpp"
 #include "manager.hpp"
 #include <hyprutils/memory/UniquePtr.hpp>
-#include <src/config/shared/complex/ComplexDataTypes.hpp>
+#include <src/config/ConfigDataValues.hpp>
 #include <src/desktop/state/FocusState.hpp>
 #include <src/managers/input/InputManager.hpp>
 #include <src/plugins/HookSystem.hpp>
@@ -80,16 +80,16 @@ static bool onKeyEvent(void *self, std::any event, SP<IKeyboard> pKeyboard) {
   return false;
 }
 
-// Straight from ConfigManager.cpp. THANKS GUYS!
+// Straight from ConfigManager.cpp. THANKS GUYS!!
 inline Hyprlang::CParseResult configHandleGradientSet(const char *VALUE, void **data) {
   // if (unloadGuard)
   //   return {};
   std::string V = VALUE;
 
   if (!*data)
-    *data = new Config::CGradientValueData();
+    *data = new CGradientValueData();
 
-  const auto DATA = sc<Config::CGradientValueData *>(*data);
+  const auto DATA = sc<CGradientValueData *>(*data);
 
   Hyprutils::String::CVarList2 varlist(std::string(V), 0, ' ');
   DATA->m_colors.clear();
@@ -146,7 +146,7 @@ inline void configHandleGradientDestroy(void **data) {
   // if (unloadGuard)
   //   return;
   if (*data)
-    delete sc<Config::CGradientValueData *>(*data);
+    delete sc<CGradientValueData *>(*data);
 }
 
 void registerConfig() {
@@ -173,7 +173,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     throw std::runtime_error("Version mismatch");
 
   manager = makeUnique<alttab::Manager>();
-  /* Maybe later.
+  /* Maybe later. I will do it :3 ask me nicly
     HyprlandAPI::addDispatcherV2(PHANDLE, "alttab", [&](std::string args) -> SDispatchResult {
       LOG_SCOPE()
       manager->toggle();
@@ -195,37 +195,41 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
 
   registerConfig();
 
-  try {
-    auto findAndHook = [&](const std::string &fn, const std::string &match, void *hookFn) {
-      auto lookup = HyprlandAPI::findFunctionsByName(PHANDLE, fn);
-      SFunctionMatch *fnMatch = nullptr;
+  auto findAndHook = [&](const std::string &fn, const std::string &match, void *hookFn) {
+    auto lookup = HyprlandAPI::findFunctionsByName(PHANDLE, fn);
+    SFunctionMatch *fnMatch = nullptr;
 
-      if (lookup.size() != 1) {
-        for (auto &f : lookup) {
-          Log::logger->log(Log::ERR, "{} candidate at {}\nsig: {}\ndemangled: {}", fn, f.address, f.signature, f.demangled);
-          if (match.empty() || f.demangled.find(match) != std::string::npos) {
-            fnMatch = &f;
-            break;
-          }
+    if (lookup.size() != 1) {
+      for (auto &f : lookup) {
+        Log::logger->log(Log::ERR, "{} candidate at {}\nsig: {}\ndemangled: {}", fn, f.address, f.signature, f.demangled);
+        if (match.empty() || f.demangled.find(match) != std::string::npos) {
+          fnMatch = &f;
+          break;
         }
-        if (!fnMatch)
-          throw std::runtime_error(fn + " not found");
-      } else {
-        fnMatch = &lookup[0];
       }
+      if (!fnMatch)
+        throw std::runtime_error(fn + " not found");
+    } else {
+      fnMatch = &lookup[0];
+    }
 
-      auto hook = HyprlandAPI::createFunctionHook(PHANDLE, fnMatch->address, hookFn);
-      if (!hook->hook())
-        throw std::runtime_error("Failed to hook " + fn);
+    auto hook = HyprlandAPI::createFunctionHook(PHANDLE, fnMatch->address, hookFn);
+    if (!hook->hook())
+      throw std::runtime_error("Failed to hook " + fn);
 
-      return hook;
-    };
+    return hook;
+  };
 
-    workspacehookfn = findAndHook("renderWorkspace", "IHyprRenderer::renderWorkspace(", (void *)renderWorkspace);
-    keyhookfn = findAndHook("onKeyEvent", "", (void *)onKeyEvent);
-
+  try {
+    workspacehookfn = findAndHook("renderWorkspace", "CHyprRenderer::renderWorkspace(", (void *)renderWorkspace);
   } catch (const std::exception &e) {
-    Log::logger->log(Log::ERR, "{}", e.what());
+    Log::logger->log(Log::ERR, "renderWorkspace hook failed: {}", e.what());
+  }
+
+  try {
+    keyhookfn = findAndHook("onKeyEvent", "", (void *)onKeyEvent);
+  } catch (const std::exception &e) {
+    Log::logger->log(Log::ERR, "onKeyEvent hook failed: {}", e.what());
   }
 
   return {PLUGIN_NAME, PLUGIN_DESCRIPTION, PLUGIN_AUTHOR, PLUGIN_VERSION};

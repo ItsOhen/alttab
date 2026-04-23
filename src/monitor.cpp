@@ -2,9 +2,11 @@
 #include "logger.hpp"
 #include <hyprutils/math/Vector2D.hpp>
 
+#define private public
 #define protected public
 #include <src/render/OpenGL.hpp>
 #include <src/render/Renderer.hpp>
+#undef protected
 #undef private
 
 #include "manager.hpp"
@@ -36,8 +38,8 @@ alttab::Monitor::Monitor(PHLMONITOR monitor) : monitor(monitor),
 }
 void alttab::Monitor::createTexture() {
   LOG_SCOPE()
-  bgFb = g_pHyprRenderer->createFB();
-  blurFb = g_pHyprRenderer->createFB();
+  bgFb = makeShared<CFramebuffer>();
+  blurFb = makeShared<CFramebuffer>();
   if (monitor->m_pixelSize.x <= 0 || monitor->m_pixelSize.y <= 0)
     return;
 
@@ -46,8 +48,8 @@ void alttab::Monitor::createTexture() {
   CRegion fullRegion = CBox({0, 0}, monitor->m_pixelSize);
 
   OVERRIDE_WORKSPACE = false;
-  g_pHyprRenderer->beginFullFakeRender(monitor, fullRegion, bgFb);
-  g_pHyprRenderer->renderWorkspace(monitor, monitor->m_activeWorkspace, NOW, fullRegion.getExtents());
+  g_pHyprRenderer->beginRender(monitor, fullRegion, RENDER_MODE_FULL_FAKE, {}, bgFb.get());
+  g_pHyprRenderer->renderWorkspace(monitor, monitor->m_activeWorkspace, Time::steadyNow(), fullRegion.getExtents());
   g_pHyprRenderer->m_renderPass.render(fullRegion);
   g_pHyprRenderer->m_renderPass.clear();
   g_pHyprRenderer->endRender();
@@ -58,7 +60,7 @@ void alttab::Monitor::createTexture() {
     blurFb->alloc(monitor->m_pixelSize.x / 2, monitor->m_pixelSize.y / 2, monitor->m_drmFormat);
   CRegion blurRegion = CBox({0, 0}, monitor->m_pixelSize);
 
-  g_pHyprRenderer->beginFullFakeRender(monitor, blurRegion, blurFb);
+  g_pHyprRenderer->beginRender(monitor, blurRegion, RENDER_MODE_FULL_FAKE, {}, blurFb.get());
 
   CBox destBox = {{0, 0}, monitor->m_pixelSize / 2};
   CTexPassElement::SRenderData data;
@@ -66,18 +68,16 @@ void alttab::Monitor::createTexture() {
   data.box = destBox;
   data.blur = true;
   g_pHyprRenderer->m_renderPass.add(makeUnique<CTexPassElement>(data));
-  CRectPassElement::SRectData blur;
-  blur.box = destBox;
-  blur.color = {0.0, 0.0, 0.0, 0.0};
-  blur.blur = true;
-  g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(blur));
 
-  // #ifndef NDEBUG
-  //   CRectPassElement::SRectData debug;
-  //   debug.box = destBox;
-  //   debug.color = {0.0, 0.0, 1.0, 0.1};
-  //   g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(debug));
-  // #endif
+  // Blur trigger — deferred via CRectPassElement
+  {
+    CRectPassElement::SRectData rect;
+    rect.box = destBox;
+    rect.color = {0.0, 0.0, 0.0, 0.0};
+    rect.blur = true;
+    g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(rect));
+  }
+
   g_pHyprRenderer->m_renderPass.render(blurRegion);
   g_pHyprRenderer->m_renderPass.clear();
   g_pHyprRenderer->endRender();
@@ -121,7 +121,8 @@ void alttab::Monitor::update(const float delta, const float offset, CRegion &dam
       .tiltOffset = r * std::sin(Config::tilt * ((float)M_PI / 180.0f)),
       .rotation = rotation.current,
       .scale = zoom.current,
-      .alpha = alpha.current};
+      .alpha = alpha.current,
+      .activeProgress = std::clamp(rotation.progress, 0.0f, 1.0f)};
 
   const size_t winCount = windows.size();
   renderTasks.clear();
@@ -129,7 +130,8 @@ void alttab::Monitor::update(const float delta, const float offset, CRegion &dam
     renderTasks.reserve(winCount);
 
   for (size_t i = 0; i < winCount; ++i) {
-    if (!windows[i] || !windows[i]->window)
+    //Guard against expired window handles
+    if (!windows[i] || !windows[i]->window || !windows[i]->window->wlSurface())
       continue;
 
     RenderData data = manager->layoutStyle->calculate(ctx, windows[i]->window->m_size, i);
@@ -146,7 +148,10 @@ void alttab::Monitor::update(const float delta, const float offset, CRegion &dam
     return a.data.z > b.data.z;
   });
 
+  //Unified bounding-box damage instead of per-card expansion
   CRegion usedArea;
+  double minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+
   for (auto &task : renderTasks) {
     CRegion visible = CRegion(task.data.position).subtract(usedArea);
     if (visible.empty()) {
@@ -160,18 +165,36 @@ void alttab::Monitor::update(const float delta, const float offset, CRegion &dam
     });
 
     task.visibility = std::clamp((float)(area / (task.data.position.width * task.data.position.height)), 0.0f, 1.0f);
+
+    // Accumulate this window's footprint into the occlusion mask for subsequent (background) windows
+    usedArea.add(task.data.position);
+
+    // Accumulate global bounds (padded for blur kernel headroom)
     CBox outerBox = task.data.position.copy();
     outerBox.round();
-    outerBox.expand(Config::borderSize);
-    damage.add(outerBox.x, outerBox.y, outerBox.width, outerBox.height);
+    outerBox.expand(Config::borderSize + 32);
+    minX = std::min(minX, outerBox.x);
+    minY = std::min(minY, outerBox.y);
+    maxX = std::max(maxX, outerBox.x + outerBox.width);
+    maxY = std::max(maxY, outerBox.y + outerBox.height);
+  }
+
+  // Submit a single unified damage rectangle
+  if (minX < maxX && minY < maxY) {
+    cachedGlobalBounds = CBox{minX, minY, maxX - minX, maxY - minY};
+    cachedGlobalBounds.round();
+    damage.add(cachedGlobalBounds);
   }
 }
 
 void alttab::Monitor::draw(const CRegion &damage, const float alpha) {
   LOG_SCOPE(Log::DRAW)
 
-  for (auto &task : renderTasks | std::views::reverse | std::views::filter([](auto &t) { return t.card; })) {
-    task.card->draw();
+  for (auto &task : renderTasks | std::views::reverse) {
+    // Guard card and window validity
+    if (!task.card || !task.card->window)
+      continue;
+    task.card->draw(damage);
     if (Config::livePreview && task.visibility > Config::previewCutoff)
       task.card->present();
   }
@@ -191,7 +214,7 @@ void alttab::Monitor::activeChanged() {
     windows[i]->isActive = (i == activeWindow);
   }
   LOG(Log::UPDATE, "activeWindow2: {}, size: {}", activeWindow, count);
-  // Why am i doing this backwards??
+  // Why am i doing this backwards?? stilling figuring out
   const auto target = (M_PI / 2) + (M_PI * 2.0f * activeWindow) / count;
   auto diff = target - rotation.target;
   diff = std::remainder(diff, 2.0f * M_PI);
