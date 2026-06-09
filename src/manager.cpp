@@ -96,7 +96,7 @@ void Manager::activate() {
 }
 
 bool Manager::setLayout() {
-  std::string styleName = toLower(Config::style);
+  std::string styleName = toLower(getVal<Config::Values::String>(Config::style));
 
   if (styleName == "grid") {
     layoutStyle = makeShared<Grid>();
@@ -269,7 +269,7 @@ void Manager::renderBackground(MONITORID monid, const CRegion &damage) {
   if (Config::dimEnabled) {
     CRectPassElement::SRectData dimData;
     dimData.box = box;
-    dimData.color = {0.0, 0.0, 0.0, Config::dimAmount};
+    dimData.color = {0.0, 0.0, 0.0, getVal<Config::Values::Float>(Config::dimAmount)};
     data.damage = {};
     g_pHyprRenderer->m_renderPass.add(makeUnique<CRectPassElement>(dimData));
   }
@@ -284,43 +284,7 @@ void Manager::renderMonitors(const CRegion &damage) {
 }
 
 void Manager::onConfigReload() {
-  auto getConf = [&](const std::string &name) -> Hyprlang::CConfigValue * {
-    return HyprlandAPI::getConfigValue(PHANDLE, "plugin:alttab:" + name);
-  };
-
-#define X(type, name, conf, def)                                     \
-  {                                                                  \
-    auto val = getConf(conf);                                        \
-    if (val)                                                         \
-      Config::name = std::any_cast<Hyprlang::type>(val->getValue()); \
-  }
-  CONFIG_VARS
-#undef X
-
-#define X(type, name, conf)                                                \
-  {                                                                        \
-    auto val = getConf(conf);                                              \
-    if (val)                                                               \
-      Config::name.get() = std::any_cast<Hyprlang::type>(val->getValue()); \
-  }
-  CONFIG_VARS_OPTIONAL_FLOAT
-#undef X
-
-  auto getGradient = [&](const std::string &name) -> CGradientValueData * {
-    auto val = HyprlandAPI::getConfigValue(PHANDLE, name);
-    if (!val || !val->getValue().has_value())
-      return nullptr;
-    try {
-      return sc<CGradientValueData *>(std::any_cast<void *>(val->getValue()));
-    } catch (...) {
-      return nullptr;
-    }
-  };
-
-  Config::activeBorderColor = getGradient("plugin:alttab:border_active");
-  Config::inactiveBorderColor = getGradient("plugin:alttab:border_inactive");
-
-  stack.clear();
+    stack.clear();
 }
 
 void Manager::onWindowCreated(PHLWINDOW window) {
@@ -367,17 +331,17 @@ void Manager::onRender(eRenderStage stage) {
   } break;
 
   case eRenderStage::RENDER_LAST_MOMENT: {
-    const PHLMONITOR MONITOR = g_pHyprOpenGL->m_renderData.pMonitor.lock();
+    const PHLMONITOR MONITOR = g_pHyprRenderer->m_renderData.pMonitor.lock();
     if (!MONITOR)
       return;
     if (!monitors.contains(MONITOR->m_id))
       return;
-    renderBackground(g_pHyprOpenGL->m_renderData.pMonitor->m_id, g_pHyprOpenGL->m_renderData.damage);
+    renderBackground(g_pHyprRenderer->m_renderData.pMonitor->m_id, g_pHyprRenderer->m_renderData.damage);
     if (!Config::splitMonitor)
-      monitors[MONITOR->m_id]->draw(g_pHyprOpenGL->m_renderData.damage, monitorFade.current);
+      monitors[MONITOR->m_id]->draw(g_pHyprRenderer->m_renderData.damage, monitorFade.current);
     else if (MONITOR == FOCUSED_MON) {
       LOG(Log::DRAW, "Rendering Monitors");
-      renderMonitors(g_pHyprOpenGL->m_renderData.damage);
+      renderMonitors(g_pHyprRenderer->m_renderData.damage);
     }
 #ifndef NDEBUG
     renderDamage(g_pHyprOpenGL->m_renderData.damage);
@@ -386,7 +350,7 @@ void Manager::onRender(eRenderStage stage) {
 #endif
 
     // stupid cursor..
-    g_pPointerManager->renderSoftwareCursorsFor(g_pHyprOpenGL->m_renderData.pMonitor.lock(), Time::steadyNow(), g_pHyprOpenGL->m_renderData.damage);
+    g_pPointerManager->renderSoftwareCursorsFor(g_pHyprRenderer->m_renderData.pMonitor.lock(), Time::steadyNow(), g_pHyprRenderer->m_renderData.damage);
 
     if (MONITOR == FOCUSED_MON)
       g_pCompositor->scheduleFrameForMonitor(MONITOR);

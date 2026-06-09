@@ -88,9 +88,9 @@ inline Hyprlang::CParseResult configHandleGradientSet(const char *VALUE, void **
   std::string V = VALUE;
 
   if (!*data)
-    *data = new CGradientValueData();
+    *data = new Config::CGradientValueData();
 
-  const auto DATA = sc<CGradientValueData *>(*data);
+  const auto DATA = sc<Config::CGradientValueData *>(*data);
 
   Hyprutils::String::CVarList2 varlist(std::string(V), 0, ' ');
   DATA->m_colors.clear();
@@ -116,10 +116,10 @@ inline Hyprlang::CParseResult configHandleGradientSet(const char *VALUE, void **
     }
 
     try {
-      const auto COL = configStringToInt(std::string(var));
+      const auto COL = std::stoull(std::string(var), nullptr, 16);
       if (!COL)
         throw std::runtime_error(std::format("failed to parse {} as a color", var));
-      DATA->m_colors.emplace_back(COL.value());
+      DATA->m_colors.emplace_back(COL);
     } catch (std::exception &e) {
       Log::logger->log(Log::WARN, "Error parsing gradient {}", V);
       parseError = "Error parsing gradient " + V + ": " + e.what();
@@ -147,22 +147,31 @@ inline void configHandleGradientDestroy(void **data) {
   // if (unloadGuard)
   //   return;
   if (*data)
-    delete sc<CGradientValueData *>(*data);
+    delete sc<Config::CGradientValueData *>(*data);
 }
 
-void registerConfig() {
+void registerConfig(HANDLE handle) {
 #define X(type, name, conf, def) \
-  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:" conf, Hyprlang::type{def});
-  CONFIG_VARS
+    Config::name = Config::Values::makeConfigValue<Config::Values::type>("plugin:alttab:" conf, "alttab option", def, {}); \
+    HyprlandAPI::addConfigValueV2(handle, Config::name);
+    CONFIG_VARS
 #undef X
 
 #define X(type, name, conf) \
-  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:" conf, Hyprlang::type{-1});
-  CONFIG_VARS_OPTIONAL_FLOAT
+    Config::name = Config::Values::makeConfigValue<Config::Values::type>("plugin:alttab:" conf, "alttab option", -1.0f, {}); \
+    HyprlandAPI::addConfigValueV2(handle, Config::name);
+    CONFIG_VARS_OPTIONAL_FLOAT
 #undef X
 
-  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:border_active", Hyprlang::CConfigCustomValueType{&configHandleGradientSet, &configHandleGradientDestroy, "0xff00ccdd"});
-  HyprlandAPI::addConfigValue(PHANDLE, "plugin:alttab:border_inactive", Hyprlang::CConfigCustomValueType{&configHandleGradientSet, &configHandleGradientDestroy, "0xaabbccddff"});
+    Config::activeBorderColor = Config::Values::makeConfigValue<Config::Values::Gradient>(
+        "plugin:alttab:border_active", "Active border color", 0xff00ccdd, {}
+    );
+    HyprlandAPI::addConfigValueV2(handle, Config::activeBorderColor);
+
+    Config::inactiveBorderColor = Config::Values::makeConfigValue<Config::Values::Gradient>(
+        "plugin:alttab:border_inactive", "Inactive border color", 0xaabbccddff, {}
+    );
+    HyprlandAPI::addConfigValueV2(handle, Config::inactiveBorderColor);
 }
 
 APICALL EXPORT std::string PLUGIN_API_VERSION() {
@@ -194,7 +203,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     });
     */
 
-  registerConfig();
+  registerConfig(PHANDLE);
 
   try {
     auto findAndHook = [&](const std::string &fn, const std::string &match, void *hookFn) {
