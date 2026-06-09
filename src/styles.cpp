@@ -20,9 +20,9 @@ RenderData Carousel::calculate(const StyleContext &ctx, const Vector2D &surfaceS
   if (finalAlpha < 0.01f)
     return {.visible = false};
 
-  const float wSize = Config::CWSize.value_or(Config::windowSize);
-  const float activeSize = Config::CWSizeActive.value_or(Config::windowSizeActive);
-  const float inactiveSize = Config::CWSizeInactive.value_or(Config::windowSizeInactive);
+const float wSize = OPTIONAL_FLOAT_OR(Config::CWSize, Config::windowSize);
+const float activeSize = OPTIONAL_FLOAT_OR(Config::CWSizeActive, Config::windowSizeActive);
+const float inactiveSize = OPTIONAL_FLOAT_OR(Config::CWSizeInactive, Config::windowSizeInactive);
 
   float scale = inactiveSize + (1.0f - inactiveSize) * zNorm;
   if (z > 0.5f) {
@@ -63,15 +63,14 @@ MoveResult Carousel::onMove(Direction dir, const size_t index, const size_t coun
 }
 
 RenderData Grid::calculate(const StyleContext &ctx, const Vector2D &surfaceSize, const size_t index) const {
-  const int cols = (int)Config::gridColumns.value_or((float)columns);
+  const int cols = OPTIONAL_INT_OR(Config::gridColumns, columns);
   const int rows = (ctx.count + cols - 1) / cols;
-  const float spacing = Config::gridSpacing.value_or(0.0f) * ctx.scale;
+  const float spacing = (getVal<Config::Values::Float>(Config::gridSpacing) == -1.0f ? 0.0f : getVal<Config::Values::Float>(Config::gridSpacing)) * ctx.scale;
   const float topPadding = spacing > 0 ? spacing : ctx.mSize.y * 0.1f * ctx.scale;
 
-  const float gridW = ctx.mSize.x * Config::gridSize.value_or(0.8f);
-
+  const float gridW = ctx.mSize.x * (getVal<Config::Values::Float>(Config::gridSize) == -1.0f ? 0.8f : getVal<Config::Values::Float>(Config::gridSize));
+  const float slotH = ctx.mSize.y * OPTIONAL_FLOAT_OR(Config::GWSize, Config::windowSize);
   const float slotW = (gridW - (spacing * (cols + 1))) / cols;
-  const float slotH = ctx.mSize.y * Config::GWSize.value_or(Config::windowSize);
 
   const int activeRow = ctx.active / cols;
   const float activeY = topPadding + (activeRow * (slotH + spacing)) + (slotH / 2.0f);
@@ -90,11 +89,10 @@ RenderData Grid::calculate(const StyleContext &ctx, const Vector2D &surfaceSize,
   const int curRow = (int)(index / cols);
   const int curCol = (int)(index % cols);
 
-  const float isTarget = (index == ctx.active) ? 1.0f : 0.0f;
-  const float isActive = std::lerp(0.0f, isTarget, ctx.activeProgress);
-  const float activeScale = Config::GWSizeActive.value_or(Config::windowSizeActive);
-  const float inactiveScale = Config::GWSizeInactive.value_or(Config::windowSizeInactive);
-  const float windowScale = std::lerp(inactiveScale, activeScale, isActive);
+  const float isActive = index == ctx.active ? 1.0f : 0.0f;
+const float windowScale = isActive ? 
+    OPTIONAL_FLOAT_OR(Config::GWSizeActive, Config::windowSizeActive) : 
+    OPTIONAL_FLOAT_OR(Config::GWSizeInactive, Config::windowSizeInactive);
   const float finalScale = windowScale * ctx.scale;
 
   const float winW = slotW * finalScale;
@@ -113,7 +111,7 @@ RenderData Grid::calculate(const StyleContext &ctx, const Vector2D &surfaceSize,
 
   return {
       .visible = finalAlpha > 0.01f,
-      .z = isTarget,
+      .z = isActive,
       .rotation = 0.0f,
       .scale = finalScale,
       .alpha = std::clamp(finalAlpha, 0.0f, 1.0f),
@@ -124,7 +122,7 @@ MoveResult Grid::onMove(Direction dir, const size_t index, const size_t count) {
   if (count == 0)
     return {.changeMonitor = true};
 
-  const int cols = (int)Config::gridColumns.value_or((float)columns);
+  const int cols = OPTIONAL_INT_OR(Config::gridColumns, columns);
   const int rows = (count + cols - 1) / cols;
   int curRow = index / cols;
   int curCol = index % cols;
@@ -161,25 +159,23 @@ MoveResult Grid::onMove(Direction dir, const size_t index, const size_t count) {
 
 RenderData Slide::calculate(const StyleContext &ctx, const Vector2D &surfaceSize, const size_t index) const {
   const float aspect = (surfaceSize.y > 0) ? surfaceSize.x / surfaceSize.y : 1.77f;
-  const float baseSize = Config::slideSize.value_or(Config::windowSize);
-  const float activeH = ctx.mSize.y * Config::slideSizeActive.value_or(Config::windowSizeActive) * baseSize;
-  const float inactiveH = activeH * Config::slideSizeInactive.value_or(1.0f);
-
-  float stripIndex = (ctx.rotation - (M_PI / 2.0f)) / (2.0f * M_PI) * ctx.count;
+  const float baseSize = OPTIONAL_FLOAT_OR(Config::slideSize, Config::windowSize);
+  const float activeH = ctx.mSize.y * OPTIONAL_FLOAT_OR(Config::slideSizeActive, Config::windowSizeActive) * baseSize;
+  const float inactiveH = activeH * (getVal<Config::Values::Float>(Config::slideSizeInactive) == -1.0f ? 1.0f : getVal<Config::Values::Float>(Config::slideSizeInactive));
 
   float visualSlot = (float)index;
   if (index > ctx.count / 2) {
     visualSlot -= (float)ctx.count;
   }
 
-  float diff = visualSlot - stripIndex;
+  float diff = visualSlot - index;
   const float dist = std::abs(diff);
   const float focusWeight = std::pow(std::max(0.0f, 1.0f - dist), 2.5f);
-  const float h = inactiveH * (1.0f + focusWeight * (Config::slideSizeActive.value_or(Config::windowSizeActive) - 1.0f));
+  const float h = inactiveH * (1.0f + focusWeight * (OPTIONAL_FLOAT_OR(Config::slideSizeActive, Config::windowSizeActive) - 1.0f));  float stripIndex = (ctx.rotation - (M_PI / 2.0f)) / (2.0f * M_PI) * ctx.count;
   const float finalScale = (h / activeH) * ctx.scale;
   const Vector2D size = {h * aspect, h};
 
-  const float spacing = Config::slideSpacing.value_or(50.0f) * ctx.scale;
+  const float spacing = (getVal<Config::Values::Float>(Config::slideSpacing) == -1.0f ? 50.0f : getVal<Config::Values::Float>(Config::slideSpacing)) * ctx.scale;
   const float slotWidth = inactiveH * aspect + spacing;
   float xOffset = diff * slotWidth;
 

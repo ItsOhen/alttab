@@ -21,7 +21,7 @@ void DebugText::draw(PHLMONITOR monitor) {
   if (m_sBuffer.empty())
     return;
 
-  auto tex = g_pHyprOpenGL->renderText(m_sBuffer, CHyprColor(1.0, 1.0, 1.0, 1.0), 14);
+  auto tex = g_pHyprRenderer->renderText(m_sBuffer, CHyprColor(1.0, 1.0, 1.0, 1.0), 14);
   if (!tex) {
     m_sBuffer.clear();
     return;

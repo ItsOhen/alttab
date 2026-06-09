@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <hyprlang.hpp>
+#include <src/config/values/ConfigValues.hpp>
 #include <src/helpers/memory/Memory.hpp>
 #include <vector>
 
@@ -38,9 +39,9 @@ struct AnimatedValue : public IAnimatedValue {
   T start{};
   T target{};
   float progress = 1.0f;
-  Hyprlang::FLOAT *speed = nullptr;
+  SP<Config::Values::IValue> *speed = nullptr;
 
-  AnimatedValue(auto *speed) : speed(speed) {}
+  AnimatedValue(SP<Config::Values::IValue> *speed) : speed(speed) {}
 
   AnimatedValue &operator=(const T &val) {
     set(val, false);
@@ -67,7 +68,9 @@ struct AnimatedValue : public IAnimatedValue {
       current = target;
       return;
     }
-    progress = std::min(1.0f, progress + (delta / std::max(0.01f, *speed)));
+    auto casted = Hyprutils::Memory::dynamicPointerCast<Config::Values::CFloatValue>(*speed);
+    float speedVal = casted ? casted->value() : 0.4f;
+    progress = std::min(1.0f, progress + (delta / std::max(0.01f, speedVal)));
     float t = progress * (2.0f - progress);
     current = start + (target - start) * t;
   }

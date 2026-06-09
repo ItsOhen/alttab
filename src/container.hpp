@@ -3,6 +3,7 @@
 #include "defines.hpp"
 #include <src/protocols/core/Compositor.hpp>
 #include <src/render/Framebuffer.hpp>
+#include <src/render/Texture.hpp>
 
 struct CardData {
   CBox position;
@@ -40,5 +41,5 @@ private:
   void updateTitleTexture(float scale);
   CBox position;
   std::string title;
-  SP<CTexture> titleTexture;
+  SP<Render::ITexture> titleTexture;
 };

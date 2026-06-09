@@ -8,6 +8,7 @@
 #include <src/render/Renderer.hpp>
 #undef protected
 #undef private
+#undef protected
 
 #include "manager.hpp"
 #include "monitor.hpp"
@@ -38,29 +39,31 @@ alttab::Monitor::Monitor(PHLMONITOR monitor) : monitor(monitor),
 }
 void alttab::Monitor::createTexture() {
   LOG_SCOPE()
-  bgFb = makeShared<CFramebuffer>();
-  blurFb = makeShared<CFramebuffer>();
   if (monitor->m_pixelSize.x <= 0 || monitor->m_pixelSize.y <= 0)
     return;
 
+  if (!bgFb)
+    bgFb = g_pHyprRenderer->createFB("alttab-bg");
   if (!bgFb->isAllocated() || bgFb->m_size != monitor->m_pixelSize)
     bgFb->alloc(monitor->m_pixelSize.x, monitor->m_pixelSize.y, monitor->m_drmFormat);
   CRegion fullRegion = CBox({0, 0}, monitor->m_pixelSize);
 
   OVERRIDE_WORKSPACE = false;
-  g_pHyprRenderer->beginRender(monitor, fullRegion, RENDER_MODE_FULL_FAKE, {}, bgFb.get());
-  g_pHyprRenderer->renderWorkspace(monitor, monitor->m_activeWorkspace, Time::steadyNow(), fullRegion.getExtents());
+  g_pHyprRenderer->beginRender(monitor, fullRegion, Render::RENDER_MODE_FULL_FAKE, {}, bgFb);
+  g_pHyprRenderer->renderWorkspace(monitor, monitor->m_activeWorkspace, NOW, fullRegion.getExtents());
   g_pHyprRenderer->m_renderPass.render(fullRegion);
   g_pHyprRenderer->m_renderPass.clear();
   g_pHyprRenderer->endRender();
   OVERRIDE_WORKSPACE = true;
   texture = bgFb->getTexture();
 
+  if (!blurFb)
+    blurFb = g_pHyprRenderer->createFB("alttab-blur");
   if (!blurFb->isAllocated() || blurFb->m_size != monitor->m_pixelSize / 2)
     blurFb->alloc(monitor->m_pixelSize.x / 2, monitor->m_pixelSize.y / 2, monitor->m_drmFormat);
   CRegion blurRegion = CBox({0, 0}, monitor->m_pixelSize);
 
-  g_pHyprRenderer->beginRender(monitor, blurRegion, RENDER_MODE_FULL_FAKE, {}, blurFb.get());
+  g_pHyprRenderer->beginRender(monitor, blurRegion, Render::RENDER_MODE_FULL_FAKE, {}, blurFb);
 
   CBox destBox = {{0, 0}, monitor->m_pixelSize / 2};
   CTexPassElement::SRenderData data;
@@ -108,7 +111,7 @@ void alttab::Monitor::update(const float delta, const float offset, CRegion &dam
     return;
 
   const float invCount = 1.0f / sc<float>(count);
-  const float r = (MONITOR->m_size.x * 0.5f) * Config::carouselSize.value_or(1.0f);
+  const float r = (MONITOR->m_size.x * 0.5f) * (getVal<Config::Values::Float>(Config::carouselSize) == -1.0f ? 1.0f : getVal<Config::Values::Float>(Config::carouselSize));
 
   auto ctx = StyleContext{
       .count = count,

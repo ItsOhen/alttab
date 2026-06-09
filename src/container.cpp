@@ -62,7 +62,10 @@ void WindowCard::draw(const CRegion& damage) {
   {
     CBorderPassElement::SBorderData border;
     border.box = layout.outer;
-    border.grad1 = (isActive) ? *Config::activeBorderColor : *Config::inactiveBorderColor;
+    auto activeValuePointer = Hyprutils::Memory::dynamicPointerCast<Config::Values::CGradientValue>(Config::activeBorderColor);
+    auto inactiveValuePointer = Hyprutils::Memory::dynamicPointerCast<Config::Values::CGradientValue>(Config::inactiveBorderColor);
+
+    border.grad1 = (isActive) ? activeValuePointer->value() : inactiveValuePointer->value();
     border.borderSize = Config::borderSize;
     border.round = Config::borderRounding;
     border.roundingPower = Config::borderRoundingPower;
@@ -163,5 +166,5 @@ void WindowCard::updateTitleTexture(float scale) {
       5.0f,
       (float)((baseWidth - padding) / (Config::fontSize * 0.55f)));
   auto display = middleTruncate(title, maxChars);
-  titleTexture = g_pHyprOpenGL->renderText(display, CHyprColor(1, 1, 1, 1), Config::fontSize);
+  titleTexture = g_pHyprRenderer->renderText(display, CHyprColor(1, 1, 1, 1), Config::fontSize);
 }
